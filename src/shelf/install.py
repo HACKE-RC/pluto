@@ -18,7 +18,7 @@ def snippet(exe: str, bind: str) -> str:
 # shelf — drop shelf for Wayland. Managed by `shelf install`; edit freely.
 layerrule = blur on, match:namespace ^{NAMESPACE}$
 layerrule = ignore_alpha 0.2, match:namespace ^{NAMESPACE}$
-layerrule = noanim on, match:namespace ^{NAMESPACE}$
+layerrule = no_anim on, match:namespace ^{NAMESPACE}$
 
 bind = {bind}, exec, {exe} toggle
 exec-once = {exe}

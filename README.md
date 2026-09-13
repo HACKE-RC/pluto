@@ -56,7 +56,7 @@ to `hyprland.conf`:
 ```ini
 layerrule = blur on, match:namespace ^shelf$
 layerrule = ignore_alpha 0.2, match:namespace ^shelf$
-layerrule = noanim on, match:namespace ^shelf$
+layerrule = no_anim on, match:namespace ^shelf$
 
 bind = SUPER SHIFT, Z, exec, /home/you/.local/bin/shelf toggle
 exec-once = /home/you/.local/bin/shelf
