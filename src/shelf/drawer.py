@@ -1,0 +1,655 @@
+from __future__ import annotations
+
+import json
+import os
+import sys
+from urllib.parse import urlsplit
+
+import cairo
+from gi.repository import Gdk, GdkPixbuf, Gio, GLib, GObject, Gtk, Gtk4LayerShell as LS
+
+from . import ingest
+from .config import NAMESPACE, Config
+from .store import FILE, IMAGE, TEXT, URL, Item, Store
+
+THUMB = 30
+EDGE_PAD = 12
+DEBUG = bool(os.environ.get("SHELF_DEBUG"))
+
+
+def log(*parts) -> None:
+    if DEBUG:
+        print("shelf:", *parts, file=sys.stderr, flush=True)
+
+
+def human_size(n: int) -> str:
+    for unit in ("B", "KB", "MB", "GB"):
+        if n < 1024 or unit == "GB":
+            return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}".replace(".0 ", " ")
+        n /= 1024
+    return f"{n:.1f} TB"
+
+
+def meta_for(item: Item) -> str:
+    if item.missing:
+        return "MISSING"
+    if item.kind in (FILE, IMAGE):
+        path = item.path or ""
+        if os.path.isdir(path):
+            try:
+                return f"FOLDER · {len(os.listdir(path))} ITEMS"
+            except OSError:
+                return "FOLDER"
+        ext = os.path.splitext(path)[1].lstrip(".").upper() or "FILE"
+        try:
+            return f"{ext} · {human_size(os.path.getsize(path))}"
+        except OSError:
+            return ext
+    if item.kind == URL:
+        return f"LINK · {urlsplit(item.url or '').netloc}"
+    text = item.text or ""
+    lines = text.count("\n") + 1
+    return f"TEXT · {lines} LINES" if lines > 1 else f"TEXT · {len(text)} CHARS"
+
+
+def content_for(items: list[Item]) -> Gdk.ContentProvider | None:
+    files = [Gio.File.new_for_path(i.path) for i in items if i.kind in (FILE, IMAGE) and i.path and not i.missing]
+    urls = [i for i in items if i.kind == URL and i.url]
+    texts = [i.text for i in items if i.kind == TEXT and i.text]
+    providers: list[Gdk.ContentProvider] = []
+    if files:
+        value = GObject.Value()
+        value.init(Gdk.FileList)
+        value.set_boxed(Gdk.FileList.new_from_list(files))
+        providers.append(Gdk.ContentProvider.new_for_value(value))
+        uri_list = "".join(f.get_uri() + "\r\n" for f in files)
+        providers.append(Gdk.ContentProvider.new_for_bytes("text/uri-list", GLib.Bytes.new(uri_list.encode())))
+    elif urls:
+        providers.append(Gdk.ContentProvider.new_for_bytes("text/uri-list", GLib.Bytes.new("".join(u.url + "\r\n" for u in urls).encode())))
+        moz = "\n".join(f"{u.url}\n{u.title or u.url}" for u in urls)
+        providers.append(Gdk.ContentProvider.new_for_bytes("text/x-moz-url", GLib.Bytes.new(moz.encode("utf-16-le"))))
+        providers.append(Gdk.ContentProvider.new_for_value("\n".join(u.url for u in urls)))
+    if texts and not files:
+        providers.append(Gdk.ContentProvider.new_for_value("\n\n".join(texts)))
+    if not providers:
+        return None
+    return providers[0] if len(providers) == 1 else Gdk.ContentProvider.new_union(providers)
+
+
+class ItemRow(Gtk.ListBoxRow):
+    def __init__(self, item: Item, drawer: "Drawer"):
+        super().__init__()
+        self.item = item
+        self.drawer = drawer
+        if item.missing:
+            self.add_css_class("missing")
+
+        box = Gtk.Box(spacing=10)
+        box.add_css_class("item")
+        self.set_child(box)
+
+        self.thumb = Gtk.Box(halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        self.thumb.add_css_class("thumb")
+        self.thumb.set_size_request(THUMB, THUMB)
+        box.append(self.thumb)
+
+        labels = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True, valign=Gtk.Align.CENTER, spacing=1)
+        name = Gtk.Label(label=item.name, xalign=0, ellipsize=3, single_line_mode=True)
+        name.add_css_class("name")
+        meta = Gtk.Label(label=meta_for(item), xalign=0, ellipsize=3, single_line_mode=True)
+        meta.add_css_class("meta")
+        labels.append(name)
+        labels.append(meta)
+        box.append(labels)
+
+        remove = Gtk.Button(icon_name="window-close-symbolic", valign=Gtk.Align.CENTER, has_frame=False, tooltip_text="Remove")
+        remove.add_css_class("remove")
+        remove.connect("clicked", lambda *_: drawer.remove_items({item.id}))
+        box.append(remove)
+
+        self._set_icon()
+        if item.kind == IMAGE or (item.kind == FILE and ingest.content_type(item).startswith("image/")):
+            self._load_thumbnail()
+
+        drag = Gtk.DragSource(actions=Gdk.DragAction.COPY | Gdk.DragAction.MOVE)
+        drag.connect("prepare", self._on_prepare)
+        drag.connect("drag-begin", self._on_drag_begin)
+        drag.connect("drag-end", lambda *_: drawer.on_drag_out_end())
+        drag.connect("drag-cancel", lambda *_: False)
+        self.add_controller(drag)
+
+    def _set_icon(self) -> None:
+        if self.item.kind == URL:
+            gicon = Gio.ThemedIcon.new_with_default_fallbacks("insert-link-symbolic")
+        elif self.item.kind == TEXT:
+            gicon = Gio.ThemedIcon.new_with_default_fallbacks("text-x-generic-symbolic")
+        elif os.path.isdir(self.item.path or ""):
+            gicon = Gio.ThemedIcon.new_with_default_fallbacks("folder-symbolic")
+        else:
+            gicon = Gio.content_type_get_symbolic_icon(ingest.content_type(self.item))
+        image = Gtk.Image.new_from_gicon(gicon)
+        image.set_pixel_size(15)
+        self.thumb.append(image)
+
+    def _load_thumbnail(self) -> None:
+        gfile = Gio.File.new_for_path(self.item.path)
+        scale = self.get_scale_factor() or 1
+        px = THUMB * scale
+
+        def on_pixbuf(_src, res):
+            try:
+                pixbuf = GdkPixbuf.Pixbuf.new_from_stream_finish(res)
+            except GLib.Error:
+                return
+            picture = Gtk.Picture.new_for_paintable(Gdk.Texture.new_for_pixbuf(pixbuf))
+            picture.set_content_fit(Gtk.ContentFit.COVER)
+            picture.set_size_request(THUMB, THUMB)
+            child = self.thumb.get_first_child()
+            if child:
+                self.thumb.remove(child)
+            self.thumb.append(picture)
+
+        def on_stream(src, res):
+            try:
+                stream = src.read_finish(res)
+            except GLib.Error:
+                return
+            GdkPixbuf.Pixbuf.new_from_stream_at_scale_async(stream, px, px, True, None, on_pixbuf)
+
+        gfile.read_async(GLib.PRIORITY_LOW, None, on_stream)
+
+    # ── drag out ─────────────────────────────────────────────────
+    def _on_prepare(self, source: Gtk.DragSource, x: float, y: float):
+        if not self.is_selected():
+            self.drawer.listbox.unselect_all()
+            self.drawer.listbox.select_row(self)
+        items = self.drawer.selected_items()
+        keep = bool(source.get_current_event_state() & Gdk.ModifierType.CONTROL_MASK)
+        return self.drawer.begin_drag_out(items, keep, x, y, self)
+
+    def _on_drag_begin(self, source: Gtk.DragSource, drag: Gdk.Drag) -> None:
+        paintable = Gtk.WidgetPaintable.new(self)
+        source.set_icon(paintable, int(self.drawer.drag_hot_x), int(self.drawer.drag_hot_y))
+        self.drawer.attach_drag(drag)
+
+
+class Drawer(Gtk.Window):
+    def __init__(self, app: Gtk.Application, store: Store, cfg: Config):
+        super().__init__(application=app, title="Shelf", decorated=False)
+        self.store = store
+        self.cfg = cfg
+        self.expanded = False
+        self.dnd_active = False
+        self.drag_out_items: list[Item] = []
+        self.drag_out_keep = False
+        self.drag_out_active = False
+        self.drag_hot_x = self.drag_hot_y = 0.0
+        self.popover_open = False
+        self._collapse_source = 0
+        self._anchor_y: float | None = None
+        self.add_css_class("shelf")
+
+        left = cfg.edge == "left"
+        LS.init_for_window(self)
+        LS.set_namespace(self, NAMESPACE)
+        LS.set_layer(self, LS.Layer.OVERLAY)
+        for edge in (LS.Edge.LEFT if left else LS.Edge.RIGHT, LS.Edge.TOP, LS.Edge.BOTTOM):
+            LS.set_anchor(self, edge, True)
+        LS.set_exclusive_zone(self, 0)
+        LS.set_keyboard_mode(self, LS.KeyboardMode.NONE)
+        self.set_default_size(cfg.width, -1)
+
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, vexpand=True)
+        outer.set_size_request(cfg.width, -1)
+        outer.add_css_class("outer")
+        self.set_child(outer)
+        self.revealer = Gtk.Revealer(
+            transition_type=Gtk.RevealerTransitionType.SLIDE_RIGHT if left else Gtk.RevealerTransitionType.SLIDE_LEFT,
+            transition_duration=220,
+            valign=Gtk.Align.CENTER,
+            vexpand=True,
+        )
+        outer.append(self.revealer)
+        self.panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.panel.add_css_class("panel")
+        self.panel.set_size_request(cfg.width, -1)
+        self.revealer.set_child(self.panel)
+
+        self._build_panel()
+        self._build_actions()
+        self._install_controllers()
+        self.store.connect("changed", lambda *_: self.refresh())
+        self.connect("map", self._on_map)
+        self.refresh()
+
+    # ── construction ─────────────────────────────────────────────
+    def _build_panel(self) -> None:
+        header = Gtk.Box(spacing=8)
+        header.add_css_class("header")
+        self.title = Gtk.Label(xalign=0, hexpand=True, ellipsize=3)
+        self.title.add_css_class("title")
+        self.count = Gtk.Label(xalign=1)
+        self.count.add_css_class("count")
+        header.append(self.title)
+        header.append(self.count)
+        self.panel.append(header)
+        title_click = Gtk.GestureClick(button=1)
+        title_click.connect("pressed", lambda g, n, x, y: self.rename_shelf() if n == 2 else None)
+        self.title.add_controller(title_click)
+
+        self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE, transition_duration=150, vhomogeneous=False)
+        self.panel.append(self.stack)
+
+        empty = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, valign=Gtk.Align.CENTER)
+        empty.add_css_class("empty")
+        hint = Gtk.Label(label="drop anything here")
+        hint.add_css_class("hint")
+        sub = Gtk.Label(label="FILES · TEXT · LINKS · IMAGES")
+        sub.add_css_class("sub")
+        empty.append(hint)
+        empty.append(sub)
+        self.stack.add_named(empty, "empty")
+
+        self.scroller = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER, propagate_natural_height=True)
+        monitor = Gdk.Display.get_default().get_monitors().get_item(0)
+        screen_h = monitor.get_geometry().height if monitor else 1000
+        self.scroller.set_max_content_height(max(160, int(screen_h * self.cfg.max_height) - 120))
+        self.listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.MULTIPLE, activate_on_single_click=False)
+        self.listbox.add_css_class("items")
+        self.listbox.connect("row-activated", lambda lb, row: self.open_items([row.item]))
+        self.scroller.set_child(self.listbox)
+        self.stack.add_named(self.scroller, "list")
+
+        self.footer = Gtk.Box(spacing=8)
+        self.footer.add_css_class("footer")
+        grip = Gtk.Label(label="⋮⋮")
+        grip.add_css_class("grip")
+        self.footer_label = Gtk.Label(xalign=0, hexpand=True)
+        self.footer.append(grip)
+        self.footer.append(self.footer_label)
+        self.panel.append(self.footer)
+        drag_all = Gtk.DragSource(actions=Gdk.DragAction.COPY | Gdk.DragAction.MOVE)
+        drag_all.connect("prepare", self._prepare_drag_all)
+        drag_all.connect("drag-begin", self._begin_drag_all)
+        drag_all.connect("drag-end", lambda *_: self.on_drag_out_end())
+        self.footer.add_controller(drag_all)
+
+    def _build_actions(self) -> None:
+        group = Gio.SimpleActionGroup()
+        for name, cb in (
+            ("open", lambda *_: self.open_items(self.selected_items())),
+            ("reveal", lambda *_: self.reveal_items(self.selected_items())),
+            ("copy", lambda *_: self.copy_items(self.selected_items())),
+            ("remove", lambda *_: self.remove_items({i.id for i in self.selected_items()})),
+            ("paste", lambda *_: self.paste()),
+            ("select-all", lambda *_: self.listbox.select_all()),
+            ("rename", lambda *_: self.rename_shelf()),
+            ("new-shelf", lambda *_: self.store.new_shelf()),
+            ("clear", lambda *_: self.store.clear()),
+            ("delete-shelf", lambda *_: self.store.delete_shelf(self.store.active_id)),
+            ("collapse", lambda *_: self.collapse(force=True)),
+            ("quit", lambda *_: self.get_application().quit_safely()),
+        ):
+            action = Gio.SimpleAction.new(name, None)
+            action.connect("activate", cb)
+            group.add_action(action)
+        switch = Gio.SimpleAction.new("switch", GLib.VariantType.new("s"))
+        switch.connect("activate", lambda a, v: self.store.set_active(v.get_string()))
+        group.add_action(switch)
+        self.insert_action_group("shelf", group)
+
+    def _install_controllers(self) -> None:
+        drop = Gtk.DropTargetAsync.new(Gdk.ContentFormats.new(ingest.ALL_MIMES), Gdk.DragAction.COPY | Gdk.DragAction.MOVE)
+        drop.connect("accept", lambda t, d: d.get_drag() is None)
+        drop.connect("drag-enter", self._on_dnd_enter)
+        drop.connect("drag-motion", lambda t, d, x, y: Gdk.DragAction.COPY)
+        drop.connect("drag-leave", self._on_dnd_leave)
+        drop.connect("drop", self._on_dnd_drop)
+        self.add_controller(drop)
+
+        motion = Gtk.EventControllerMotion()
+        motion.connect("enter", lambda *_: self._cancel_collapse())
+        motion.connect("leave", lambda *_: self._schedule_collapse(self.cfg.auto_collapse_ms))
+        self.add_controller(motion)
+
+        keys = Gtk.EventControllerKey()
+        keys.connect("key-pressed", self._on_key)
+        self.add_controller(keys)
+
+        backdrop = Gtk.GestureClick(button=1)
+        backdrop.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        backdrop.connect("pressed", self._on_backdrop_press)
+        self.add_controller(backdrop)
+
+        menu = Gtk.GestureClick(button=3)
+        menu.connect("pressed", self._on_context_press)
+        self.panel.add_controller(menu)
+
+    # ── layer-shell plumbing ─────────────────────────────────────
+    def _on_map(self, *_):
+        surface = self.get_surface()
+        surface.connect("notify::width", lambda *_: self._apply_input_region())
+        surface.connect("notify::height", lambda *_: self._apply_input_region())
+        self._apply_input_region()
+
+    def _apply_input_region(self) -> None:
+        surface = self.get_surface()
+        if surface is None:
+            return
+        w, h = surface.get_width(), surface.get_height()
+        if self.expanded:
+            rect = cairo.RectangleInt(0, 0, w, h)
+        else:
+            sw = min(self.cfg.strip_width, w)
+            rect = cairo.RectangleInt(0 if self.cfg.edge == "left" else w - sw, 0, sw, h)
+        surface.set_input_region(cairo.Region(rect))
+
+    # ── expand / collapse ────────────────────────────────────────
+    def expand(self, y: float | None = None) -> None:
+        self._cancel_collapse()
+        if self.expanded:
+            return
+        self.expanded = True
+        self._apply_input_region()
+        LS.set_keyboard_mode(self, LS.KeyboardMode.ON_DEMAND)
+        if y is not None:
+            self._place_near(y)
+            self.revealer.set_reveal_child(True)
+        else:
+            self._query_pointer(lambda py: (self._place_near(py), self.revealer.set_reveal_child(True)))
+
+    def _place_near(self, y: float | None) -> None:
+        """Slide the panel in centred on y (window coordinates), clamped to the surface."""
+        self._anchor_y = y
+        if y is None:
+            self.revealer.set_valign(Gtk.Align.CENTER)
+            self.revealer.set_margin_top(0)
+            return
+        surface_h = self.get_height()
+        _, panel_h, _, _ = self.panel.measure(Gtk.Orientation.VERTICAL, self.cfg.width)
+        top = int(min(max(y - panel_h / 2, EDGE_PAD), max(EDGE_PAD, surface_h - panel_h - EDGE_PAD)))
+        self.revealer.set_valign(Gtk.Align.START)
+        self.revealer.set_margin_top(top)
+
+    def _query_pointer(self, done) -> None:
+        """Hyprland only: find the pointer so a hotkey/tray toggle opens the panel where the user is looking."""
+        try:
+            proc = Gio.Subprocess.new(["hyprctl", "-j", "--batch", "cursorpos;monitors"], Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE)
+        except GLib.Error:
+            done(None)
+            return
+
+        def finished(p, res):
+            try:
+                _, out, _ = p.communicate_utf8_finish(res)
+                decoder = json.JSONDecoder()
+                cursor, end = decoder.raw_decode(out.lstrip())
+                monitors, _ = decoder.raw_decode(out.lstrip()[end:].lstrip())
+                mon = next((m for m in monitors if m.get("focused")), monitors[0])
+                surface_top = mon["y"] + mon["reserved"][1]
+                done(cursor["y"] - surface_top)
+            except (GLib.Error, ValueError, KeyError, IndexError, TypeError):
+                done(None)
+
+        proc.communicate_utf8_async(None, None, finished)
+
+    def collapse(self, force: bool = False) -> None:
+        self._cancel_collapse()
+        if not self.expanded:
+            return
+        if not force and (self.dnd_active or self.drag_out_active or self.popover_open):
+            return
+        self.expanded = False
+        self.revealer.set_reveal_child(False)
+        LS.set_keyboard_mode(self, LS.KeyboardMode.NONE)
+        self._apply_input_region()
+
+    def toggle(self) -> None:
+        self.collapse(force=True) if self.expanded else self.expand()
+
+    def _schedule_collapse(self, ms: int) -> None:
+        self._cancel_collapse()
+        if self.expanded:
+            self._collapse_source = GLib.timeout_add(ms, self._collapse_timeout)
+
+    def _collapse_timeout(self) -> bool:
+        self._collapse_source = 0
+        self.collapse()
+        return False
+
+    def _cancel_collapse(self) -> None:
+        if self._collapse_source:
+            GLib.source_remove(self._collapse_source)
+            self._collapse_source = 0
+
+    # ── drop in ──────────────────────────────────────────────────
+    def _on_dnd_enter(self, target, drop: Gdk.Drop, x, y):
+        if drop.get_drag() is not None:
+            return 0
+        self.dnd_active = True
+        self.add_css_class("drop-hover")
+        log("dnd enter", drop.get_formats().to_string())
+        self.expand(y)
+        return Gdk.DragAction.COPY
+
+    def _on_dnd_leave(self, target, drop):
+        self.dnd_active = False
+        self.remove_css_class("drop-hover")
+        self._schedule_collapse(self.cfg.auto_collapse_ms)
+
+    def _on_dnd_drop(self, target, drop: Gdk.Drop, x, y):
+        self.dnd_active = False
+        self.remove_css_class("drop-hover")
+
+        def done(items: list[Item]):
+            drop.finish(Gdk.DragAction.COPY)
+            log("dropped", [(i.kind, i.name) for i in items])
+            self.store.add_items(items)
+            self._schedule_collapse(self.cfg.linger_after_drop_ms)
+
+        ingest.from_drop(self.store, drop, done)
+        return True
+
+    def paste(self) -> None:
+        ingest.from_clipboard(self.store, self.get_clipboard(), lambda items: self.store.add_items(items))
+
+    # ── drag out ─────────────────────────────────────────────────
+    def begin_drag_out(self, items: list[Item], keep: bool, x: float, y: float, widget: Gtk.Widget):
+        provider = content_for(items)
+        if provider is None:
+            return None
+        self.drag_out_items = items
+        self.drag_out_keep = keep
+        self.drag_out_active = True
+        self.drag_hot_x, self.drag_hot_y = x, y
+        self._cancel_collapse()
+        return provider
+
+    def attach_drag(self, drag: Gdk.Drag) -> None:
+        drag.connect("drop-performed", lambda *_: self._on_drop_performed())
+        drag.connect("dnd-finished", lambda d: log("dnd-finished action", d.get_selected_action()))
+        drag.connect("cancel", lambda d, reason: log("drag cancel", reason))
+
+    def _on_drop_performed(self) -> None:
+        log("drop-performed keep=", self.drag_out_keep)
+        if self.cfg.remove_on_drag_out and not self.drag_out_keep:
+            self.remove_items({i.id for i in self.drag_out_items})
+
+    def on_drag_out_end(self) -> None:
+        self.drag_out_active = False
+        vanished = {i.id for i in self.drag_out_items if i.missing}
+        log("drag-out end; vanished", len(vanished))
+        self.drag_out_items = []
+        if vanished:
+            self.remove_items(vanished)
+        self._schedule_collapse(self.cfg.auto_collapse_ms)
+
+    def _prepare_drag_all(self, source, x, y):
+        self.listbox.select_all()
+        return self.begin_drag_out(list(self.store.active.items), bool(source.get_current_event_state() & Gdk.ModifierType.CONTROL_MASK), x, y, self.footer)
+
+    def _begin_drag_all(self, source, drag):
+        source.set_icon(Gtk.WidgetPaintable.new(self.panel), int(self.drag_hot_x), int(self.drag_hot_y) + 40)
+        self.attach_drag(drag)
+
+    # ── item operations ──────────────────────────────────────────
+    def selected_items(self) -> list[Item]:
+        return [row.item for row in self.listbox.get_selected_rows()]
+
+    def remove_items(self, ids: set[str]) -> None:
+        self.store.remove_items(ids)
+
+    def open_items(self, items: list[Item]) -> None:
+        for item in items:
+            if item.kind in (FILE, IMAGE) and item.path:
+                Gio.AppInfo.launch_default_for_uri_async(Gio.File.new_for_path(item.path).get_uri(), None, None, None)
+            elif item.kind == URL and item.url:
+                Gio.AppInfo.launch_default_for_uri_async(item.url, None, None, None)
+            elif item.kind == TEXT:
+                self.copy_items([item])
+
+    def reveal_items(self, items: list[Item]) -> None:
+        uris = [Gio.File.new_for_path(i.path).get_uri() for i in items if i.kind in (FILE, IMAGE) and i.path]
+        if not uris:
+            return
+        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        bus.call(
+            "org.freedesktop.FileManager1", "/org/freedesktop/FileManager1", "org.freedesktop.FileManager1",
+            "ShowItems", GLib.Variant("(ass)", (uris, "")), None, Gio.DBusCallFlags.NONE, 2000, None,
+            lambda b, res: self._reveal_fallback(b, res, uris),
+        )
+
+    def _reveal_fallback(self, bus, res, uris):
+        try:
+            bus.call_finish(res)
+        except GLib.Error:
+            parent = Gio.File.new_for_uri(uris[0]).get_parent()
+            if parent:
+                Gio.AppInfo.launch_default_for_uri_async(parent.get_uri(), None, None, None)
+
+    def copy_items(self, items: list[Item]) -> None:
+        provider = content_for(items)
+        if provider:
+            self.get_clipboard().set_content(provider)
+
+    # ── shelf-level UI ───────────────────────────────────────────
+    def refresh(self) -> None:
+        shelf = self.store.active
+        self.title.set_text(shelf.name)
+        n = len(shelf.items)
+        self.count.set_text(f"{n} ITEM" + ("" if n == 1 else "S"))
+        selected = {row.item.id for row in self.listbox.get_selected_rows()}
+        while child := self.listbox.get_first_child():
+            self.listbox.remove(child)
+        for item in shelf.items:
+            row = ItemRow(item, self)
+            self.listbox.append(row)
+            if item.id in selected:
+                self.listbox.select_row(row)
+        self.stack.set_visible_child_name("list" if n else "empty")
+        self.footer.set_visible(n > 1)
+        self.footer_label.set_text(f"drag all · {n}")
+        if self.expanded and self._anchor_y is not None:
+            GLib.idle_add(lambda: (self._place_near(self._anchor_y), False)[1])
+
+    def rename_shelf(self) -> None:
+        popover = Gtk.Popover(has_arrow=False, position=Gtk.PositionType.BOTTOM)
+        entry = Gtk.Entry(text=self.store.active.name, width_chars=22)
+        entry.add_css_class("rename")
+        popover.set_child(entry)
+        popover.set_parent(self.title)
+        self._track_popover(popover)
+
+        def commit(*_):
+            self.store.rename(self.store.active_id, entry.get_text())
+            popover.popdown()
+
+        entry.connect("activate", commit)
+        popover.popup()
+        entry.grab_focus()
+        entry.select_region(0, -1)
+
+    def _track_popover(self, popover: Gtk.Popover) -> None:
+        self.popover_open = True
+
+        def closed(*_):
+            self.popover_open = False
+            GLib.idle_add(lambda: (popover.unparent(), False)[1])
+            self._schedule_collapse(self.cfg.auto_collapse_ms)
+
+        popover.connect("closed", closed)
+
+    def _on_context_press(self, gesture, n_press, x, y) -> None:
+        picked = self.panel.pick(x, y, Gtk.PickFlags.DEFAULT)
+        row = picked.get_ancestor(Gtk.ListBoxRow) if picked else None
+        menu = Gio.Menu()
+        if row is not None:
+            if not row.is_selected():
+                self.listbox.unselect_all()
+                self.listbox.select_row(row)
+            items = self.selected_items()
+            section = Gio.Menu()
+            section.append("Open", "shelf.open")
+            if any(i.kind in (FILE, IMAGE) for i in items):
+                section.append("Show in file manager", "shelf.reveal")
+            section.append("Copy", "shelf.copy")
+            menu.append_section(None, section)
+            danger = Gio.Menu()
+            danger.append("Remove", "shelf.remove")
+            menu.append_section(None, danger)
+        else:
+            shelves = Gio.Menu()
+            for shelf in self.store.shelves:
+                mark = "● " if shelf.id == self.store.active_id else "○ "
+                item = Gio.MenuItem.new(f"{mark}{shelf.name} · {len(shelf.items)}", None)
+                item.set_action_and_target_value("shelf.switch", GLib.Variant.new_string(shelf.id))
+                shelves.append_item(item)
+            menu.append_section("SHELVES", shelves)
+            section = Gio.Menu()
+            section.append("New shelf", "shelf.new-shelf")
+            section.append("Rename", "shelf.rename")
+            section.append("Paste from clipboard", "shelf.paste")
+            menu.append_section(None, section)
+            danger = Gio.Menu()
+            danger.append("Clear shelf", "shelf.clear")
+            danger.append("Delete shelf", "shelf.delete-shelf")
+            menu.append_section(None, danger)
+            tail = Gio.Menu()
+            tail.append("Quit", "shelf.quit")
+            menu.append_section(None, tail)
+
+        popover = Gtk.PopoverMenu.new_from_model(menu)
+        popover.set_has_arrow(False)
+        popover.set_parent(self.panel)
+        popover.set_pointing_to(Gdk.Rectangle(int(x), int(y), 1, 1))
+        popover.set_position(Gtk.PositionType.LEFT if self.cfg.edge == "right" else Gtk.PositionType.RIGHT)
+        self._track_popover(popover)
+        popover.popup()
+
+    def _on_backdrop_press(self, gesture, n_press, x, y) -> None:
+        picked = self.pick(x, y, Gtk.PickFlags.DEFAULT)
+        inside = picked is not None and (picked == self.panel or picked.is_ancestor(self.panel))
+        if inside:
+            if picked.get_ancestor(Gtk.ListBoxRow) is None and picked.get_ancestor(Gtk.Button) is None:
+                self.listbox.unselect_all()
+            return
+        if self.expanded:
+            self.collapse(force=True)
+
+    def _on_key(self, controller, keyval, keycode, state) -> bool:
+        ctrl = bool(state & Gdk.ModifierType.CONTROL_MASK)
+        if keyval == Gdk.KEY_Escape:
+            self.collapse(force=True)
+        elif keyval in (Gdk.KEY_Delete, Gdk.KEY_BackSpace):
+            self.remove_items({i.id for i in self.selected_items()})
+        elif ctrl and keyval in (Gdk.KEY_a, Gdk.KEY_A):
+            self.listbox.select_all()
+        elif ctrl and keyval in (Gdk.KEY_v, Gdk.KEY_V):
+            self.paste()
+        elif ctrl and keyval in (Gdk.KEY_c, Gdk.KEY_C):
+            self.copy_items(self.selected_items())
+        elif keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+            self.open_items(self.selected_items())
+        else:
+            return False
+        return True

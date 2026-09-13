@@ -1,0 +1,31 @@
+[project]
+name = "shelf"
+version = "0.1.0"
+description = "A drop shelf for Wayland: drag anything to the screen edge, keep it, drag it back out later."
+readme = "README.md"
+license = "MIT"
+authors = [
+    { name = "HACKE-RC", email = "60568652+HACKE-RC@users.noreply.github.com" }
+]
+requires-python = ">=3.12"
+keywords = ["wayland", "hyprland", "drag-and-drop", "shelf", "dropover", "layer-shell"]
+classifiers = [
+    "Environment :: X11 Applications :: GTK",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: Desktop Environment",
+]
+dependencies = [
+    "pycairo>=1.26",
+    "pygobject>=3.50",
+]
+
+[project.scripts]
+shelf = "shelf:main"
+
+[build-system]
+requires = ["uv_build>=0.12.9,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 140
