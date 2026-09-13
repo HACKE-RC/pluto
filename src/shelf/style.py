@@ -130,8 +130,9 @@ def build_css(cfg: Config) -> str:
         background-color: {rgba(p.fg, 0.05)};
         color: {rgba(p.fg, 0.7)};
     }}
-    .thumb picture {{
+    .thumb image.picture {{
         border-radius: 3px;
+        -gtk-icon-style: regular;
     }}
     .name {{
         color: {p.fg};

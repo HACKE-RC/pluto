@@ -37,7 +37,8 @@ def meta_for(item: Item) -> str:
         path = item.path or ""
         if os.path.isdir(path):
             try:
-                return f"FOLDER · {len(os.listdir(path))} ITEMS"
+                n = len(os.listdir(path))
+                return f"FOLDER · {n} ITEM" + ("" if n == 1 else "S")
             except OSError:
                 return "FOLDER"
         ext = os.path.splitext(path)[1].lstrip(".").upper() or "FILE"
@@ -88,9 +89,10 @@ class ItemRow(Gtk.ListBoxRow):
         box.add_css_class("item")
         self.set_child(box)
 
-        self.thumb = Gtk.Box(halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        self.thumb = Gtk.Box(halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER, hexpand=False)
         self.thumb.add_css_class("thumb")
         self.thumb.set_size_request(THUMB, THUMB)
+        self.thumb.set_overflow(Gtk.Overflow.HIDDEN)
         box.append(self.thumb)
 
         labels = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True, valign=Gtk.Align.CENTER, spacing=1)
@@ -120,7 +122,7 @@ class ItemRow(Gtk.ListBoxRow):
 
     def _set_icon(self) -> None:
         if self.item.kind == URL:
-            gicon = Gio.ThemedIcon.new_with_default_fallbacks("insert-link-symbolic")
+            gicon = Gio.ThemedIcon.new_from_names(["web-browser-symbolic", "insert-link-symbolic", "emblem-symbolic-link"])
         elif self.item.kind == TEXT:
             gicon = Gio.ThemedIcon.new_with_default_fallbacks("text-x-generic-symbolic")
         elif os.path.isdir(self.item.path or ""):
@@ -141,20 +143,24 @@ class ItemRow(Gtk.ListBoxRow):
                 pixbuf = GdkPixbuf.Pixbuf.new_from_stream_finish(res)
             except GLib.Error:
                 return
-            picture = Gtk.Picture.new_for_paintable(Gdk.Texture.new_for_pixbuf(pixbuf))
-            picture.set_content_fit(Gtk.ContentFit.COVER)
-            picture.set_size_request(THUMB, THUMB)
+            w, h = pixbuf.get_width(), pixbuf.get_height()
+            side = min(w, h)
+            square = pixbuf.new_subpixbuf((w - side) // 2, (h - side) // 2, side, side)
+            image = Gtk.Image.new_from_paintable(Gdk.Texture.new_for_pixbuf(square))
+            image.set_pixel_size(THUMB)
+            image.add_css_class("picture")
             child = self.thumb.get_first_child()
             if child:
                 self.thumb.remove(child)
-            self.thumb.append(picture)
+            self.thumb.append(image)
 
         def on_stream(src, res):
             try:
                 stream = src.read_finish(res)
             except GLib.Error:
                 return
-            GdkPixbuf.Pixbuf.new_from_stream_at_scale_async(stream, px, px, True, None, on_pixbuf)
+            # Scale so the shorter side is the thumbnail size, then crop the centre square.
+            GdkPixbuf.Pixbuf.new_from_stream_at_scale_async(stream, px * 4, px, True, None, on_pixbuf)
 
         gfile.read_async(GLib.PRIORITY_LOW, None, on_stream)
 
@@ -368,6 +374,7 @@ class Drawer(Gtk.Window):
         surface_h = self.get_height()
         _, panel_h, _, _ = self.panel.measure(Gtk.Orientation.VERTICAL, self.cfg.width)
         top = int(min(max(y - panel_h / 2, EDGE_PAD), max(EDGE_PAD, surface_h - panel_h - EDGE_PAD)))
+        log("place y=", y, "panel_h=", panel_h, "surface_h=", surface_h, "top=", top)
         self.revealer.set_valign(Gtk.Align.START)
         self.revealer.set_margin_top(top)
 
