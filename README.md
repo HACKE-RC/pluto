@@ -1,9 +1,8 @@
 # pluto
 
-A drop shelf for Wayland.
-
-Drag a file, a link, some text or an image from anywhere to the edge of the screen and save it in a window.
-You can drag it out of the window as needed, anytime!
+A place to put things while you're moving them. Drag something to the screen
+edge, drop it, go where it needs to go, drag it back out. Works with files,
+links, text and images from the browser.
 
 Made for Hyprland. It also runs on other compositors that have
 `wlr-layer-shell` and a StatusNotifierItem tray (waybar, quickshell and the
