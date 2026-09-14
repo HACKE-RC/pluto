@@ -1,6 +1,6 @@
 [project]
 name = "pluto-shelf"
-version = "0.1.4"
+version = "0.1.5"
 description = "A place to put things while you're moving them: drag to the screen edge, drop, go where it needs to go, drag it back out. A drop shelf for Wayland."
 readme = "README.md"
 license = "MIT"
