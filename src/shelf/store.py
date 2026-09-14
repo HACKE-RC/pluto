@@ -94,7 +94,8 @@ class Store(GObject.Object):
         super().__init__()
         self.shelves: list[Shelf] = []
         self.active_id: str = ""
-        self.panel_y: int | None = None
+        self.panel_pos: tuple[int, int] | None = None
+        self.pinned = False
         self._save_source = 0
         self.load()
 
@@ -104,7 +105,9 @@ class Store(GObject.Object):
             data = json.loads(STATE_FILE.read_text())
             self.shelves = [Shelf.from_json(s) for s in data.get("shelves", [])]
             self.active_id = data.get("active", "")
-            self.panel_y = data.get("panel_y")
+            pos = data.get("panel_pos")
+            self.panel_pos = (int(pos[0]), int(pos[1])) if pos else None
+            self.pinned = bool(data.get("pinned", False))
         except (OSError, ValueError, KeyError):
             self.shelves = []
         if not self.shelves:
@@ -117,7 +120,7 @@ class Store(GObject.Object):
             GLib.source_remove(self._save_source)
             self._save_source = 0
         DATA_DIR.mkdir(parents=True, exist_ok=True)
-        payload = json.dumps({"active": self.active_id, "panel_y": self.panel_y, "shelves": [s.to_json() for s in self.shelves]}, indent=1)
+        payload = json.dumps({"active": self.active_id, "panel_pos": list(self.panel_pos) if self.panel_pos else None, "pinned": self.pinned, "shelves": [s.to_json() for s in self.shelves]}, indent=1)
         tmp = STATE_FILE.with_suffix(".json.tmp")
         tmp.write_text(payload)
         os.replace(tmp, STATE_FILE)
@@ -132,8 +135,15 @@ class Store(GObject.Object):
         self.save_now()
         return False
 
-    def set_panel_y(self, y: int | None) -> None:
-        self.panel_y = y
+    def set_panel_pos(self, pos: tuple[int, int] | None) -> None:
+        self.panel_pos = pos
+        self._save_later()
+
+    def set_pinned(self, pinned: bool) -> None:
+        self.pinned = pinned
+        self._save_later()
+
+    def _save_later(self) -> None:
         if not self._save_source:
             self._save_source = GLib.timeout_add(300, self._flush)
 

@@ -235,7 +235,7 @@ class Slide(Gtk.Widget):
     def do_snapshot(self, snapshot: Gtk.Snapshot) -> None:
         if not self.child or self.progress <= 0.0:
             return
-        offset = (1.0 - self.progress) * self.get_width() * (1 if self.from_right else -1)
+        offset = (1.0 - self.progress) * 28.0 * (1 if self.from_right else -1)
         snapshot.save()
         snapshot.translate(Graphene.Point().init(offset, 0))
         snapshot.push_opacity(min(1.0, 0.25 + self.progress))
@@ -257,29 +257,28 @@ class Drawer(Gtk.Window):
         self.drag_hot_x = self.drag_hot_y = 0.0
         self.popover_open = False
         self._collapse_source = 0
-        self._anchor_y: float | None = None
         self._last_dnd_motion = 0
         self._keyboard = False
         self.add_css_class("shelf")
 
         left = cfg.edge == "left"
+        self.pinned = store.pinned
+        self._panel_left: int | None = None
+        self._panel_top: int | None = None
         LS.init_for_window(self)
         LS.set_namespace(self, NAMESPACE)
         LS.set_layer(self, LS.Layer.OVERLAY)
-        for edge in (LS.Edge.LEFT if left else LS.Edge.RIGHT, LS.Edge.TOP, LS.Edge.BOTTOM):
+        for edge in (LS.Edge.LEFT, LS.Edge.RIGHT, LS.Edge.TOP, LS.Edge.BOTTOM):
             LS.set_anchor(self, edge, True)
         LS.set_exclusive_zone(self, 0)
         LS.set_keyboard_mode(self, LS.KeyboardMode.NONE)
-        self.set_default_size(cfg.width, -1)
-        self.set_size_request(cfg.width, -1)
 
-        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, vexpand=True)
-        outer.set_size_request(cfg.width, -1)
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, vexpand=True, hexpand=True)
         outer.add_css_class("outer")
         self.set_child(outer)
         self.revealer = Slide(from_right=not left, duration_ms=cfg.slide_ms)
-        self.revealer.set_valign(Gtk.Align.CENTER)
-        self.revealer.set_vexpand(True)
+        self.revealer.set_halign(Gtk.Align.START)
+        self.revealer.set_valign(Gtk.Align.START)
         outer.append(self.revealer)
         self.panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.panel.add_css_class("panel")
@@ -303,6 +302,11 @@ class Drawer(Gtk.Window):
         self.count.add_css_class("count")
         header.append(self.title)
         header.append(self.count)
+        self.pin_button = Gtk.ToggleButton(icon_name="view-pin-symbolic", valign=Gtk.Align.CENTER, has_frame=False, tooltip_text="Pin: stay open")
+        self.pin_button.add_css_class("close")
+        self.pin_button.set_active(self.pinned)
+        self.pin_button.connect("toggled", self._on_pin_toggled)
+        header.append(self.pin_button)
         close = Gtk.Button(icon_name="window-close-symbolic", valign=Gtk.Align.CENTER, has_frame=False, tooltip_text="Close (Esc)")
         close.add_css_class("close")
         close.connect("clicked", lambda *_: self.collapse(force=True))
@@ -390,8 +394,8 @@ class Drawer(Gtk.Window):
         self.add_controller(drop)
 
         motion = Gtk.EventControllerMotion()
-        motion.connect("enter", lambda *_: (log("pointer enter"), self._cancel_collapse()))
-        motion.connect("leave", lambda *_: (log("pointer leave"), self._schedule_collapse(self.cfg.auto_collapse_ms)))
+        motion.connect("enter", lambda *_: self._cancel_collapse())
+        motion.connect("leave", lambda *_: (self._set_keyboard(False), self._schedule_collapse(self.cfg.auto_collapse_ms)))
         self.add_controller(motion)
 
         keys = Gtk.EventControllerKey()
@@ -433,18 +437,21 @@ class Drawer(Gtk.Window):
         surface.connect("notify::width", lambda *_: self._apply_input_region())
         surface.connect("notify::height", lambda *_: self._apply_input_region())
         self._apply_input_region()
+        if self.pinned:
+            GLib.idle_add(lambda: (self.expand(), False)[1])
 
     def _apply_input_region(self) -> None:
         surface = self.get_surface()
         if surface is None:
             return
         w, h = surface.get_width(), surface.get_height()
-        if self.expanded:
-            rect = cairo.RectangleInt(0, 0, w, h)
-        else:
-            sw = min(self.cfg.strip_width, w)
-            rect = cairo.RectangleInt(0 if self.cfg.edge == "left" else w - sw, 0, sw, h)
-        surface.set_input_region(cairo.Region(rect))
+        sw = min(self.cfg.strip_width, w)
+        region = cairo.Region(cairo.RectangleInt(0 if self.cfg.edge == "left" else w - sw, 0, sw, h))
+        if self.expanded and self._panel_left is not None:
+            pw, ph = self._panel_size()
+            region.union(cairo.RectangleInt(self._panel_left, self._panel_top, pw, ph))
+            log("input region: strip + panel", (self._panel_left, self._panel_top, pw, ph))
+        surface.set_input_region(region)
 
     # ── expand / collapse ────────────────────────────────────────
     def expand(self, y: float | None = None) -> None:
@@ -452,73 +459,68 @@ class Drawer(Gtk.Window):
         if self.expanded:
             return
         self.expanded = True
-        self._apply_input_region()
-        if y is not None:
-            self._place_near(y)
+        if self.store.panel_pos is not None:
+            self._set_position(*self.store.panel_pos)
             self.revealer.set_reveal_child(True)
-        elif self.store.panel_y is not None:
-            self._place_top(self.store.panel_y)
+        elif y is not None:
+            self._place_near(y)
             self.revealer.set_reveal_child(True)
         else:
             self._query_pointer(lambda py: (self._place_near(py), self.revealer.set_reveal_child(True)))
 
-    def _current_top(self) -> int:
-        ok, bounds = self.revealer.compute_bounds(self)
-        return int(bounds.get_y()) if ok else 0
+    def _panel_size(self) -> tuple[int, int]:
+        _, h, _, _ = self.panel.measure(Gtk.Orientation.VERTICAL, self.cfg.width)
+        return self.cfg.width, h
 
-    def _clamp_top(self, top: float) -> int:
-        surface_h = self.get_height()
-        _, panel_h, _, _ = self.panel.measure(Gtk.Orientation.VERTICAL, self.cfg.width)
-        return int(min(max(top, EDGE_PAD), max(EDGE_PAD, surface_h - panel_h - EDGE_PAD)))
-
-    def _place_top(self, top: int) -> None:
-        self._anchor_y = None
-        self._panel_top = self._clamp_top(top)
-        self.revealer.set_valign(Gtk.Align.START)
+    def _set_position(self, left: float, top: float) -> None:
+        sw, sh = self.get_width(), self.get_height()
+        pw, ph = self._panel_size()
+        self._panel_left = int(min(max(left, 0), max(0, sw - pw)))
+        self._panel_top = int(min(max(top, 0), max(0, sh - ph)))
+        self.revealer.set_margin_start(self._panel_left)
         self.revealer.set_margin_top(self._panel_top)
+        self._apply_input_region()
 
-    def _pointer_window_y(self, gesture) -> float | None:
+    def _place_near(self, y: float | None) -> None:
+        """Dock at the screen edge, centred on y (window coordinates)."""
+        sw, sh = self.get_width(), self.get_height()
+        pw, ph = self._panel_size()
+        left = 0 if self.cfg.edge == "left" else sw - pw
+        top = (sh - ph) / 2 if y is None else y - ph / 2
+        self._set_position(left, top)
+
+    def _pointer_window_pos(self, gesture) -> tuple[float, float] | None:
         # Offsets from the gesture are in the header's own coordinates, and the header moves with the panel,
         # so convert the current point to window coordinates before comparing against the start.
         ok, x, y = gesture.get_point(None)
         if not ok:
             return None
-        widget = gesture.get_widget()
-        ok2, pt = widget.compute_point(self, Graphene.Point().init(x, y))
-        return pt.y if ok2 else None
+        ok2, pt = gesture.get_widget().compute_point(self, Graphene.Point().init(x, y))
+        return (pt.x, pt.y) if ok2 else None
 
     def _on_move_begin(self, gesture, x, y) -> None:
-        self._move_start_top = self._current_top()
-        self._move_start_y = self._pointer_window_y(gesture)
+        self._move_start = (self._panel_left or 0, self._panel_top or 0)
+        self._move_start_ptr = self._pointer_window_pos(gesture)
         self._cancel_collapse()
 
     def _on_move_update(self, gesture, dx, dy) -> None:
-        y = self._pointer_window_y(gesture)
-        if y is None or self._move_start_y is None:
+        ptr = self._pointer_window_pos(gesture)
+        if ptr is None or self._move_start_ptr is None:
             return
-        self._place_top(self._move_start_top + (y - self._move_start_y))
+        self._set_position(self._move_start[0] + ptr[0] - self._move_start_ptr[0],
+                           self._move_start[1] + ptr[1] - self._move_start_ptr[1])
 
     def _on_move_end(self, gesture, dx, dy) -> None:
-        # The allocation lags a frame behind the last update; use the position we asked for.
-        top = getattr(self, "_panel_top", None)
-        if top is None:
-            top = self._current_top()
-        self.store.set_panel_y(top)
-        log("panel moved to", top)
+        self.store.set_panel_pos((self._panel_left, self._panel_top))
+        log("panel moved to", self._panel_left, self._panel_top)
 
-    def _place_near(self, y: float | None) -> None:
-        """Slide the panel in centred on y (window coordinates), clamped to the surface."""
-        self._anchor_y = y
-        if y is None:
-            self.revealer.set_valign(Gtk.Align.CENTER)
-            self.revealer.set_margin_top(0)
-            return
-        surface_h = self.get_height()
-        _, panel_h, _, _ = self.panel.measure(Gtk.Orientation.VERTICAL, self.cfg.width)
-        top = int(min(max(y - panel_h / 2, EDGE_PAD), max(EDGE_PAD, surface_h - panel_h - EDGE_PAD)))
-        log("place y=", y, "panel_h=", panel_h, "surface_h=", surface_h, "top=", top)
-        self.revealer.set_valign(Gtk.Align.START)
-        self.revealer.set_margin_top(top)
+    def _on_pin_toggled(self, button) -> None:
+        self.pinned = button.get_active()
+        self.store.set_pinned(self.pinned)
+        if self.pinned:
+            self._cancel_collapse()
+        else:
+            self._schedule_collapse(self.cfg.auto_collapse_ms)
 
     def _query_pointer(self, done) -> None:
         """Hyprland only: find the pointer so a hotkey/tray toggle opens the panel where the user is looking."""
@@ -548,9 +550,9 @@ class Drawer(Gtk.Window):
             return
         # A drag that left without a leave event (compositor quirk) must not pin the panel open forever.
         dnd_live = self.dnd_active and GLib.get_monotonic_time() - self._last_dnd_motion < 2_000_000
-        if not force and (dnd_live or self.drag_out_active or self.popover_open):
-            log("collapse deferred: dnd=", self.dnd_active, "drag_out=", self.drag_out_active, "popover=", self.popover_open)
-            self._schedule_collapse(self.cfg.auto_collapse_ms)
+        if not force and (self.pinned or dnd_live or self.drag_out_active or self.popover_open):
+            if not self.pinned:
+                self._schedule_collapse(self.cfg.auto_collapse_ms)
             return
         log("collapse")
         self.expanded = False
@@ -601,10 +603,9 @@ class Drawer(Gtk.Window):
         return Gdk.DragAction.COPY
 
     def _on_dnd_leave(self, target, drop):
-        log("dnd leave")
         self.dnd_active = False
         self.remove_css_class("drop-hover")
-        self._schedule_collapse(self.cfg.auto_collapse_ms)
+        self._schedule_collapse(max(self.cfg.auto_collapse_ms, 2500))
 
     def _on_dnd_drop(self, target, drop: Gdk.Drop, x, y):
         self.dnd_active = False
@@ -725,8 +726,8 @@ class Drawer(Gtk.Window):
         self.stack.set_visible_child_name("list" if n else "empty")
         self.footer.set_visible(n > 1)
         self.footer_label.set_text(f"drag all · {n}")
-        if self.expanded and self._anchor_y is not None:
-            GLib.idle_add(lambda: (self._place_near(self._anchor_y), False)[1])
+        if self.expanded and self._panel_left is not None:
+            GLib.idle_add(lambda: (self._set_position(self._panel_left, self._panel_top), False)[1])
 
     def rename_shelf(self) -> None:
         popover = Gtk.Popover(has_arrow=False, position=Gtk.PositionType.BOTTOM)
@@ -804,15 +805,11 @@ class Drawer(Gtk.Window):
 
     def _on_backdrop_press(self, gesture, n_press, x, y) -> None:
         picked = self.pick(x, y, Gtk.PickFlags.DEFAULT)
-        inside = picked is not None and (picked == self.panel or picked.is_ancestor(self.panel))
-        log("press", n_press, "at", int(x), int(y), "on", type(picked).__name__ if picked else None, "inside=", inside)
-        if inside:
-            self._set_keyboard(True)
-            if picked.get_ancestor(Gtk.ListBoxRow) is None and picked.get_ancestor(Gtk.Button) is None:
-                self.listbox.unselect_all()
+        if picked is None or not (picked == self.panel or picked.is_ancestor(self.panel)):
             return
-        if self.expanded:
-            self.collapse(force=True)
+        self._set_keyboard(True)
+        if picked.get_ancestor(Gtk.ListBoxRow) is None and picked.get_ancestor(Gtk.Button) is None:
+            self.listbox.unselect_all()
 
     def _on_key(self, controller, keyval, keycode, state) -> bool:
         ctrl = bool(state & Gdk.ModifierType.CONTROL_MASK)

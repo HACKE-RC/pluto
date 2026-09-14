@@ -13,9 +13,8 @@ def rgba(hex_color: str, alpha: float = 1.0) -> str:
 
 def build_css(cfg: Config) -> str:
     p = cfg.palette
-    left = cfg.edge == "left"
-    radius = f"0 {cfg.radius}px {cfg.radius}px 0" if left else f"{cfg.radius}px 0 0 {cfg.radius}px"
-    border_side = "border-left: none;" if left else "border-right: none;"
+    radius = f"{cfg.radius}px"
+    border_side = ""
     return f"""
     * {{
         font-family: {cfg.font};
@@ -70,6 +69,10 @@ def build_css(cfg: Config) -> str:
     .close:hover {{
         color: {p.fg};
         background-color: {rgba(p.fg, 0.08)};
+    }}
+    .close:checked {{
+        color: {p.accent};
+        background-color: {rgba(p.accent, 0.14)};
     }}
     .eyebrow {{
         color: {p.muted};

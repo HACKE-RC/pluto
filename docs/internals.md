@@ -6,12 +6,15 @@ design.
 
 ## The edge strip
 
-The shelf is one layer-shell surface, full height, on the right edge, mapped
-all the time. Most of the time its input region is a 3 px strip, so it is
+The shelf is one layer-shell surface covering the whole screen, mapped all the
+time. Most of the time its input region is a 3 px strip on the edge, so it is
 invisible and clicks go straight through it. A drag entering that strip is an
-ordinary `wl_data_device.enter`. When that happens the daemon widens the input
-region to the whole surface and slides the panel in. The surface itself never
-changes size during a drag, so the compositor's drag focus never has to move.
+ordinary `wl_data_device.enter`. When that happens the daemon adds the panel's
+rectangle to the input region and slides the panel in. Only the panel takes
+input, so a pinned panel can sit over other windows without stealing their
+clicks, and the panel can be dragged anywhere because moving it just moves the
+input rectangle. The surface itself never changes size, so the compositor's
+drag focus never has to move.
 
 The panel is translated in from the edge in `snapshot()` rather than revealed
 with a `Gtk.Revealer`. A revealer re-allocates its child every frame, which
