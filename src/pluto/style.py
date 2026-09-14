@@ -202,6 +202,25 @@ def build_css(cfg: Config) -> str:
         color: {p.dim};
         letter-spacing: -0.2em;
     }}
+    .footer-sep {{
+        background-color: {rgba(p.border, 0.9)};
+        min-width: 1px;
+        min-height: 14px;
+        margin: 0 6px;
+    }}
+    .footer-action {{
+        color: {p.muted};
+        background: transparent;
+        border: none;
+        padding: 0 4px;
+        min-height: 0;
+        font-size: {cfg.font_size - 2}px;
+        letter-spacing: 0.06em;
+        transition: color 120ms ease-out;
+    }}
+    .footer-action:hover {{
+        color: {p.danger};
+    }}
 
     popover.menu > contents, popover > contents {{
         background-color: {rgba(p.bg, 0.97)};
