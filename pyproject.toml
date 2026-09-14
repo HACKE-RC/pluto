@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Pluto: a drop shelf for Wayland. Drag anything to the screen edge, keep it, drag it back out later."
 readme = "README.md"
 license = "MIT"
-license-files = ["LICENSE"]
+license-files = ["LICENSE*"]
 authors = [
     { name = "HACKE-RC", email = "60568652+HACKE-RC@users.noreply.github.com" }
 ]
