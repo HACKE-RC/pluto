@@ -4,8 +4,6 @@ A place to put things while you're moving them. Drag something to the screen
 edge, drop it, go where it needs to go, drag it back out. Works with files,
 links, text and images from the browser.
 
-![pluto](https://raw.githubusercontent.com/HACKE-RC/pluto/main/docs/shelf.png)
-
 ## Why
 
 macOS has Dropover and Yoink for this, Windows has Dropshelf, and I could not find anything on Wayland that
