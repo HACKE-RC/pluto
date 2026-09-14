@@ -126,8 +126,13 @@ Other things learned along the way, in case you build something similar:
 - Blur comes from the compositor (`layerrule = blur`); `ignore_alpha` keeps the
   transparent parts of the surface from being blurred.
 - Shake detection polls `cursorpos` on Hyprland's IPC socket at 40 Hz from a
-  thread — the only compositor-specific piece; everything else is plain
-  layer-shell and works elsewhere with `shake = false`.
+  thread (backing off while the pointer is still) — the only compositor-specific
+  piece; everything else is plain layer-shell and works elsewhere with
+  `shake = false`. Hyprland has no mouse-gesture option and emits no pointer
+  events over IPC or to Lua, and `hyprland_input_capture_v1` is an exclusive
+  grab, so polling is the only client-side option. If you run the Lua config
+  manager, `hypr/shelf.lua` does the same polling inside the compositor
+  (`hl.timer` + `hl.get_cursor_pos()`); use it with `shake = false`.
 - A fully transparent layer surface makes GTK skip rendering, and without a
   frame GDK never sends the window geometry gtk4-layer-shell sizes the surface
   from; the root widget keeps a 1 % background so the surface always draws.
