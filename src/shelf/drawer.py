@@ -6,7 +6,7 @@ import sys
 from urllib.parse import urlsplit
 
 import cairo
-from gi.repository import Gdk, GdkPixbuf, Gio, GLib, GObject, Gtk, Gtk4LayerShell as LS
+from gi.repository import Gdk, GdkPixbuf, Gio, GLib, GObject, Graphene, Gtk, Gtk4LayerShell as LS
 
 from . import ingest
 from .config import NAMESPACE, Config
@@ -179,6 +179,71 @@ class ItemRow(Gtk.ListBoxRow):
         self.drawer.attach_drag(drag)
 
 
+class Slide(Gtk.Widget):
+    """Slides its child in from the screen edge by translating it in snapshot(), so the content is laid
+    out once and never reflows mid-animation (a Gtk.Revealer slide re-allocates every frame)."""
+
+    def __init__(self, from_right: bool, duration_ms: int = 260):
+        super().__init__()
+        self.set_layout_manager(Gtk.BinLayout())
+        self.set_overflow(Gtk.Overflow.HIDDEN)
+        self.from_right = from_right
+        self.duration = duration_ms * 1000
+        self.child: Gtk.Widget | None = None
+        self.progress = 0.0
+        self.target = 0.0
+        self._start_progress = 0.0
+        self._start_time: int | None = None
+        self._tick = 0
+
+    def set_child(self, child: Gtk.Widget) -> None:
+        self.child = child
+        child.set_parent(self)
+        child.set_child_visible(False)
+
+    def do_dispose(self):
+        if self.child:
+            self.child.unparent()
+            self.child = None
+        Gtk.Widget.do_dispose(self)
+
+    def set_reveal_child(self, reveal: bool) -> None:
+        self.target = 1.0 if reveal else 0.0
+        if reveal and self.child:
+            self.child.set_child_visible(True)
+        self._start_progress = self.progress
+        self._start_time = None
+        if not self._tick:
+            self._tick = self.add_tick_callback(self._on_tick)
+
+    def _on_tick(self, widget, clock) -> bool:
+        now = clock.get_frame_time()
+        if self._start_time is None:
+            self._start_time = now
+        t = min(1.0, (now - self._start_time) / self.duration)
+        eased = 1 - (1 - t) ** 5
+        self.progress = self._start_progress + (self.target - self._start_progress) * eased
+        self.queue_draw()
+        if t >= 1.0:
+            self.progress = self.target
+            if self.target == 0.0 and self.child:
+                self.child.set_child_visible(False)
+            self._tick = 0
+            return False
+        return True
+
+    def do_snapshot(self, snapshot: Gtk.Snapshot) -> None:
+        if not self.child or self.progress <= 0.0:
+            return
+        offset = (1.0 - self.progress) * self.get_width() * (1 if self.from_right else -1)
+        snapshot.save()
+        snapshot.translate(Graphene.Point().init(offset, 0))
+        snapshot.push_opacity(min(1.0, 0.25 + self.progress))
+        self.snapshot_child(self.child, snapshot)
+        snapshot.pop()
+        snapshot.restore()
+
+
 class Drawer(Gtk.Window):
     def __init__(self, app: Gtk.Application, store: Store, cfg: Config):
         super().__init__(application=app, title="Shelf", decorated=False)
@@ -212,12 +277,9 @@ class Drawer(Gtk.Window):
         outer.set_size_request(cfg.width, -1)
         outer.add_css_class("outer")
         self.set_child(outer)
-        self.revealer = Gtk.Revealer(
-            transition_type=Gtk.RevealerTransitionType.SLIDE_RIGHT if left else Gtk.RevealerTransitionType.SLIDE_LEFT,
-            transition_duration=220,
-            valign=Gtk.Align.CENTER,
-            vexpand=True,
-        )
+        self.revealer = Slide(from_right=not left)
+        self.revealer.set_valign(Gtk.Align.CENTER)
+        self.revealer.set_vexpand(True)
         outer.append(self.revealer)
         self.panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.panel.add_css_class("panel")
