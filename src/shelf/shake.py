@@ -63,11 +63,20 @@ class ShakeDetector:
 
     def _run(self, path: str) -> None:
         last_fire = 0.0
-        while not self._stop.wait(self.interval):
+        last_move = time.monotonic()
+        last_pos: tuple[float, float] | None = None
+        while True:
+            # Back off to a slow poll once the pointer has been still for a while; a shake can't start without motion.
+            idle = time.monotonic() - last_move > 1.5
+            if self._stop.wait(self.interval * (6 if idle else 1)):
+                return
             pos = cursor_pos(path)
             if pos is None:
                 continue
             now = time.monotonic()
+            if pos != last_pos:
+                last_pos = pos
+                last_move = now
             self.samples.append((now, *pos))
             while self.samples and now - self.samples[0][0] > self.window:
                 self.samples.popleft()
