@@ -15,7 +15,9 @@ The shelf is invisible until you need it: a 3 px strip on the right edge of the
 screen. Drag anything onto that strip and a panel slides in at your pointer.
 Drop, and the item is parked there. Files and folders are kept by reference,
 so nothing is copied or moved until you drag it somewhere. Images dragged out
-of a browser are saved locally, so they survive closing the tab.
+of a browser are saved locally (the pixels the browser hands over, or a
+download of the image URL when it only hands over a link), so they survive
+closing the tab, and copying one puts the actual image on the clipboard.
 
 You can keep several shelves. Starting a new one puts the current one behind
 the tray icon with everything still on it, and you can switch back whenever.

@@ -204,6 +204,15 @@ class Store(GObject.Object):
                 existing.add(key)
         self._touch()
 
+    def replace_item(self, item_id: str, new_item: Item) -> None:
+        for shelf in self.shelves:
+            for index, item in enumerate(shelf.items):
+                if item.id == item_id:
+                    new_item.id = item_id
+                    shelf.items[index] = new_item
+                    self._touch()
+                    return
+
     def remove_items(self, ids: set[str], shelf_id: str | None = None) -> None:
         shelf = self.get(shelf_id) if shelf_id else self.active
         if not shelf or not ids:

@@ -58,6 +58,12 @@ def content_for(items: list[Item]) -> Gdk.ContentProvider | None:
     urls = [i for i in items if i.kind == URL and i.url]
     texts = [i.text for i in items if i.kind == TEXT and i.text]
     providers: list[Gdk.ContentProvider] = []
+    images = [i for i in items if i.path and not i.missing and (i.kind == IMAGE or ingest.content_type(i).startswith("image/"))]
+    if len(images) == 1 and len(items) == 1:
+        try:
+            providers.append(Gdk.ContentProvider.new_for_value(Gdk.Texture.new_from_filename(images[0].path)))
+        except GLib.Error:
+            pass
     if files:
         value = GObject.Value()
         value.init(Gdk.FileList)
@@ -614,14 +620,20 @@ class Drawer(Gtk.Window):
         def done(items: list[Item]):
             drop.finish(Gdk.DragAction.COPY)
             log("dropped", [(i.kind, i.name) for i in items])
-            self.store.add_items(items)
+            self.add_items(items)
             self._schedule_collapse(self.cfg.linger_after_drop_ms)
 
         ingest.from_drop(self.store, drop, done)
         return True
 
     def paste(self) -> None:
-        ingest.from_clipboard(self.store, self.get_clipboard(), lambda items: self.store.add_items(items))
+        ingest.from_clipboard(self.store, self.get_clipboard(), self.add_items)
+
+    def add_items(self, items: list[Item]) -> None:
+        self.store.add_items(items)
+        for item in items:
+            if item.kind == URL and item.url and ingest.looks_like_image_url(item.url):
+                ingest.download_image(self.store, item, lambda new, old=item: new and self.store.replace_item(old.id, new))
 
     # ── drag out ─────────────────────────────────────────────────
     def drag_out_actions(self) -> Gdk.DragAction:

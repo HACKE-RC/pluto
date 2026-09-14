@@ -82,7 +82,7 @@ class ShelfApp(Gtk.Application):
         if verb == "add":
             cwd = cmdline.get_cwd() or "/"
             items = [self._item_from_arg(arg, cwd) for arg in args[1:]]
-            self.store.add_items(items)
+            self.drawer.add_items(items)
             self.drawer.expand()
             self.drawer._schedule_collapse(4000)
             return 0
