@@ -94,6 +94,7 @@ class Store(GObject.Object):
         super().__init__()
         self.shelves: list[Shelf] = []
         self.active_id: str = ""
+        self.panel_y: int | None = None
         self._save_source = 0
         self.load()
 
@@ -103,6 +104,7 @@ class Store(GObject.Object):
             data = json.loads(STATE_FILE.read_text())
             self.shelves = [Shelf.from_json(s) for s in data.get("shelves", [])]
             self.active_id = data.get("active", "")
+            self.panel_y = data.get("panel_y")
         except (OSError, ValueError, KeyError):
             self.shelves = []
         if not self.shelves:
@@ -115,7 +117,7 @@ class Store(GObject.Object):
             GLib.source_remove(self._save_source)
             self._save_source = 0
         DATA_DIR.mkdir(parents=True, exist_ok=True)
-        payload = json.dumps({"active": self.active_id, "shelves": [s.to_json() for s in self.shelves]}, indent=1)
+        payload = json.dumps({"active": self.active_id, "panel_y": self.panel_y, "shelves": [s.to_json() for s in self.shelves]}, indent=1)
         tmp = STATE_FILE.with_suffix(".json.tmp")
         tmp.write_text(payload)
         os.replace(tmp, STATE_FILE)
@@ -129,6 +131,11 @@ class Store(GObject.Object):
         self._save_source = 0
         self.save_now()
         return False
+
+    def set_panel_y(self, y: int | None) -> None:
+        self.panel_y = y
+        if not self._save_source:
+            self._save_source = GLib.timeout_add(300, self._flush)
 
     # ── shelves ──────────────────────────────────────────────────
     @property

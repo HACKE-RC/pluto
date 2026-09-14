@@ -311,6 +311,12 @@ class Drawer(Gtk.Window):
         title_click = Gtk.GestureClick(button=1)
         title_click.connect("pressed", lambda g, n, x, y: self.rename_shelf() if n == 2 else None)
         self.title.add_controller(title_click)
+        header.set_cursor_from_name("grab")
+        move = Gtk.GestureDrag(button=1)
+        move.connect("drag-begin", self._on_move_begin)
+        move.connect("drag-update", self._on_move_update)
+        move.connect("drag-end", self._on_move_end)
+        header.add_controller(move)
 
         self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE, transition_duration=150, vhomogeneous=False)
         self.panel.append(self.stack)
@@ -450,8 +456,37 @@ class Drawer(Gtk.Window):
         if y is not None:
             self._place_near(y)
             self.revealer.set_reveal_child(True)
+        elif self.store.panel_y is not None:
+            self._place_top(self.store.panel_y)
+            self.revealer.set_reveal_child(True)
         else:
             self._query_pointer(lambda py: (self._place_near(py), self.revealer.set_reveal_child(True)))
+
+    def _current_top(self) -> int:
+        ok, bounds = self.revealer.compute_bounds(self)
+        return int(bounds.get_y()) if ok else 0
+
+    def _clamp_top(self, top: float) -> int:
+        surface_h = self.get_height()
+        _, panel_h, _, _ = self.panel.measure(Gtk.Orientation.VERTICAL, self.cfg.width)
+        return int(min(max(top, EDGE_PAD), max(EDGE_PAD, surface_h - panel_h - EDGE_PAD)))
+
+    def _place_top(self, top: int) -> None:
+        self._anchor_y = None
+        self.revealer.set_valign(Gtk.Align.START)
+        self.revealer.set_margin_top(self._clamp_top(top))
+
+    def _on_move_begin(self, gesture, x, y) -> None:
+        self._move_start_top = self._current_top()
+        self._cancel_collapse()
+
+    def _on_move_update(self, gesture, dx, dy) -> None:
+        self._place_top(self._move_start_top + dy)
+
+    def _on_move_end(self, gesture, dx, dy) -> None:
+        top = self._current_top()
+        self.store.set_panel_y(top)
+        log("panel moved to", top)
 
     def _place_near(self, y: float | None) -> None:
         """Slide the panel in centred on y (window coordinates), clamped to the surface."""
