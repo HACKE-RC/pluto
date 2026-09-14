@@ -9,7 +9,9 @@ import time
 from collections import deque
 from typing import Callable
 
-from gi.repository import GLib
+from gi.repository import Gio, GLib
+
+from .config import BUTTON_FILE
 
 
 def hypr_socket_path() -> str | None:
@@ -39,8 +41,12 @@ class ShakeDetector:
     each leg travelling at least `travel` logical pixels."""
 
     def __init__(self, on_shake: Callable[[float, float], None], *, interval_ms: int = 25, window_ms: int = 500,
-                 travel: int = 25, reversals: int = 3, cooldown_ms: int = 1200):
+                 travel: int = 25, reversals: int = 3, cooldown_ms: int = 1200, requires_grab: bool = True):
         self.on_shake = on_shake
+        self.requires_grab = requires_grab
+        # None = unknown (binds not installed or no click yet) -> allow; True/False = left button state
+        self.button_down: bool | None = None
+        self._monitor: Gio.FileMonitor | None = None
         self.interval = interval_ms / 1000
         self.window = window_ms / 1000
         self.travel = travel
@@ -54,12 +60,26 @@ class ShakeDetector:
         path = hypr_socket_path()
         if not path:
             return False
+        if self.requires_grab:
+            self._watch_button()
         self._thread = threading.Thread(target=self._run, args=(path,), name="shelf-shake", daemon=True)
         self._thread.start()
         return True
 
     def stop(self) -> None:
         self._stop.set()
+
+    def _watch_button(self) -> None:
+        self._read_button()
+        gfile = Gio.File.new_for_path(str(BUTTON_FILE))
+        self._monitor = gfile.monitor_file(Gio.FileMonitorFlags.NONE, None)
+        self._monitor.connect("changed", lambda *_: self._read_button())
+
+    def _read_button(self) -> None:
+        try:
+            self.button_down = BUTTON_FILE.read_text().strip() == "1"
+        except OSError:
+            self.button_down = None
 
     def _run(self, path: str) -> None:
         last_fire = 0.0
@@ -80,6 +100,8 @@ class ShakeDetector:
             self.samples.append((now, *pos))
             while self.samples and now - self.samples[0][0] > self.window:
                 self.samples.popleft()
+            if self.requires_grab and self.button_down is False:
+                continue
             if now - last_fire > self.cooldown and self._is_shake():
                 last_fire = now
                 self.samples.clear()

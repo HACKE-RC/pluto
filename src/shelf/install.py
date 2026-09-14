@@ -5,7 +5,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from .config import NAMESPACE, XDG_CONFIG, write_default
+from .config import BUTTON_FILE, NAMESPACE, XDG_CONFIG, write_default
 
 HYPR_DIR = XDG_CONFIG / "hypr"
 HYPR_MAIN = HYPR_DIR / "hyprland.conf"
@@ -22,6 +22,11 @@ layerrule = no_anim on, match:namespace ^{NAMESPACE}$
 
 bind = {bind}, exec, {exe} toggle
 exec-once = {exe}
+
+# Left-button state so a shake only counts while something is grabbed.
+# Non-consuming: clicks still reach the app under the pointer.
+bindn = , mouse:272, exec, printf 1 > {BUTTON_FILE}
+bindrn = , mouse:272, exec, printf 0 > {BUTTON_FILE}
 """
 
 

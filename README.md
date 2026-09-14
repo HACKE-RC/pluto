@@ -21,9 +21,9 @@ drag touches it, and stays out of the way otherwise.
 
 - **Drag to the right edge.** The panel slides in at your pointer. Drop.
 - **`Super+Shift+Z`** toggles the panel at the pointer — it works mid-drag too.
-- **Shake the pointer** left-right (Hyprland only) and the panel opens at the
-  pointer, like Dropover. It can't tell whether you are dragging, so it simply
-  closes again after a few seconds if nothing arrives.
+- **Shake the pointer** left-right while dragging something (Hyprland only) and
+  the panel opens at the pointer, like Dropover. It closes again after a few
+  seconds if nothing lands on it.
 - **Drag things back out** one by one, multi-select with `Ctrl`/`Shift`-click, or
   grab the *drag all* handle at the bottom. Dragging out removes the item from
   the shelf; hold `Ctrl` while dragging to keep it.
@@ -63,7 +63,15 @@ layerrule = no_anim on, match:namespace ^shelf$
 
 bind = SUPER SHIFT, Z, exec, /home/you/.local/bin/shelf toggle
 exec-once = /home/you/.local/bin/shelf
+
+# left-button state so a shake only counts while something is grabbed
+bindn = , mouse:272, exec, printf 1 > /run/user/1000/shelf-button
+bindrn = , mouse:272, exec, printf 0 > /run/user/1000/shelf-button
 ```
+
+The two mouse binds are *non-consuming* (`n`): clicks still reach whatever is
+under the pointer; Hyprland just runs a 1 ms `printf` on press and release so
+`shelf` knows whether the button is held.
 
 Use `shelf install --bind 'SUPER, Z'` for a different key. Nothing else is
 touched; delete `shelf.conf` and the `source` line to undo.
@@ -96,6 +104,7 @@ auto_collapse_ms = 1200   # after the pointer leaves
 linger_after_drop_ms = 2500
 remove_on_drag_out = true # Ctrl-drag keeps the item either way
 shake = true              # shake-to-summon (Hyprland IPC); tune with
+shake_requires_grab = true # only while the left button is held
 shake_reversals = 4       #   reversals / travel (px per leg) / window_ms
 shake_travel = 40
 shake_window_ms = 600
@@ -126,9 +135,10 @@ Other things learned along the way, in case you build something similar:
 - Blur comes from the compositor (`layerrule = blur`); `ignore_alpha` keeps the
   transparent parts of the surface from being blurred.
 - Shake detection polls `cursorpos` on Hyprland's IPC socket at 40 Hz from a
-  thread (backing off while the pointer is still) — the only compositor-specific
-  piece; everything else is plain layer-shell and works elsewhere with
-  `shake = false`. Hyprland has no mouse-gesture option and emits no pointer
+  thread (backing off while the pointer is still); the button state comes from
+  two non-consuming Hyprland binds writing to `$XDG_RUNTIME_DIR/shelf-button`,
+  watched with inotify. These are the only compositor-specific pieces;
+  everything else is plain layer-shell and works elsewhere with `shake = false`. Hyprland has no mouse-gesture option and emits no pointer
   events over IPC or to Lua, and `hyprland_input_capture_v1` is an exclusive
   grab, so polling is the only client-side option. If you run the Lua config
   manager, `hypr/shelf.lua` does the same polling inside the compositor

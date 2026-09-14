@@ -13,6 +13,7 @@ CONFIG_FILE = CONFIG_DIR / "config.toml"
 DATA_DIR = XDG_DATA / "shelf"
 STATE_FILE = DATA_DIR / "state.json"
 BLOB_DIR = DATA_DIR / "blobs"
+BUTTON_FILE = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "shelf-button"
 
 APP_ID = "io.shelf.Shelf"
 NAMESPACE = "shelf"
@@ -44,6 +45,7 @@ class Config:
     linger_after_drop_ms: int = 2500
     remove_on_drag_out: bool = True
     shake: bool = True
+    shake_requires_grab: bool = True
     shake_reversals: int = 4
     shake_travel: int = 40
     shake_window_ms: int = 600
@@ -65,6 +67,7 @@ auto_collapse_ms = 1200   # collapse this long after the pointer leaves
 linger_after_drop_ms = 2500
 remove_on_drag_out = true # dragging an item out removes it (hold Ctrl to keep)
 shake = true              # shake the pointer left-right to summon the panel (Hyprland only)
+shake_requires_grab = true # only while the left button is held (needs the binds from `shelf install`)
 shake_reversals = 4       # direction changes needed within shake_window_ms
 shake_travel = 40         # minimum pixels per leg of the shake
 shake_window_ms = 600
