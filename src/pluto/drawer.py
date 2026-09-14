@@ -351,7 +351,7 @@ class Drawer(Gtk.Window):
         self.scroller.set_max_content_height(max(160, int(screen_h * self.cfg.max_height) - 120))
         self.listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.MULTIPLE, activate_on_single_click=False)
         self.listbox.add_css_class("items")
-        self.listbox.connect("row-activated", lambda lb, row: self.open_items([row.item]))
+        self.listbox.connect("row-activated", lambda lb, row: self.open_items([row.item], row))
         self.listbox.connect("selected-rows-changed", lambda lb: log("selection:", [r.item.name for r in lb.get_selected_rows()]))
         self.scroller.set_child(self.listbox)
         self.stack.add_named(self.scroller, "list")
@@ -383,6 +383,7 @@ class Drawer(Gtk.Window):
             ("open", lambda *_: self.open_items(self.selected_items())),
             ("reveal", lambda *_: self.reveal_items(self.selected_items())),
             ("copy", lambda *_: self.copy_items(self.selected_items())),
+            ("edit", lambda *_: [self.open_text_in_editor(i) for i in self.selected_items() if i.kind == TEXT]),
             ("remove", lambda *_: self.remove_items({i.id for i in self.selected_items()})),
             ("paste", lambda *_: self.paste()),
             ("select-all", lambda *_: self.listbox.select_all()),
@@ -800,14 +801,52 @@ class Drawer(Gtk.Window):
     def remove_items(self, ids: set[str]) -> None:
         self.store.remove_items(ids)
 
-    def open_items(self, items: list[Item]) -> None:
+    def open_items(self, items: list[Item], anchor: Gtk.Widget | None = None) -> None:
         for item in items:
             if item.kind in (FILE, IMAGE) and item.path:
                 Gio.AppInfo.launch_default_for_uri_async(Gio.File.new_for_path(item.path).get_uri(), None, None, None)
             elif item.kind == URL and item.url:
                 Gio.AppInfo.launch_default_for_uri_async(item.url, None, None, None)
             elif item.kind == TEXT:
-                self.copy_items([item])
+                self.preview_text(item, anchor or self._row_for(item) or self.panel)
+                return
+
+    def _row_for(self, item: Item) -> Gtk.ListBoxRow | None:
+        row = self.listbox.get_first_child()
+        while row is not None:
+            if getattr(row, "item", None) is item:
+                return row
+            row = row.get_next_sibling()
+        return None
+
+    def preview_text(self, item: Item, anchor: Gtk.Widget) -> None:
+        popover = Gtk.Popover(has_arrow=False, position=Gtk.PositionType.LEFT if self.cfg.edge == "right" else Gtk.PositionType.RIGHT)
+        popover.add_css_class("preview")
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        scroller = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER, propagate_natural_height=True, propagate_natural_width=True)
+        scroller.set_max_content_height(360)
+        scroller.set_max_content_width(420)
+        label = Gtk.Label(label=item.text or "", xalign=0, yalign=0, wrap=True, wrap_mode=2, selectable=True, max_width_chars=48)
+        label.add_css_class("preview-text")
+        scroller.set_child(label)
+        box.append(scroller)
+        actions = Gtk.Box(spacing=4, halign=Gtk.Align.END)
+        for text, cb in (("copy", lambda *_: self.copy_items([item])), ("open in editor", lambda *_: self.open_text_in_editor(item))):
+            button = Gtk.Button(label=text, has_frame=False)
+            button.add_css_class("footer-action")
+            button.connect("clicked", cb)
+            actions.append(button)
+        box.append(actions)
+        popover.set_child(box)
+        popover.set_parent(anchor)
+        self._track_popover(popover)
+        popover.popup()
+
+    def open_text_in_editor(self, item: Item) -> None:
+        path = self.store.new_blob_path("txt").with_name(f"{item.id}.txt")
+        if not path.exists():
+            path.write_text(item.text or "")
+        Gio.AppInfo.launch_default_for_uri_async(Gio.File.new_for_path(str(path)).get_uri(), None, None, None)
 
     def reveal_items(self, items: list[Item]) -> None:
         uris = [Gio.File.new_for_path(i.path).get_uri() for i in items if i.kind in (FILE, IMAGE) and i.path]
@@ -890,9 +929,11 @@ class Drawer(Gtk.Window):
                 self.listbox.select_row(row)
             items = self.selected_items()
             section = Gio.Menu()
-            section.append("Open", "shelf.open")
+            section.append("Preview" if all(i.kind == TEXT for i in items) else "Open", "shelf.open")
             if any(i.kind in (FILE, IMAGE) for i in items):
                 section.append("Show in file manager", "shelf.reveal")
+            if any(i.kind == TEXT for i in items):
+                section.append("Open in editor", "shelf.edit")
             section.append("Copy", "shelf.copy")
             menu.append_section(None, section)
             danger = Gio.Menu()
@@ -949,7 +990,8 @@ class Drawer(Gtk.Window):
         elif ctrl and keyval in (Gdk.KEY_c, Gdk.KEY_C):
             self.copy_items(self.selected_items())
         elif keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
-            self.open_items(self.selected_items())
+            rows = self.listbox.get_selected_rows()
+            self.open_items(self.selected_items(), rows[0] if rows else None)
         else:
             # A key we don't use while holding exclusive focus means the user is typing elsewhere: let go.
             # Modifiers on their own don't count (Ctrl arrives before the V of Ctrl+V).

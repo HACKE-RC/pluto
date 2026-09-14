@@ -258,6 +258,16 @@ def build_css(cfg: Config) -> str:
         padding: 4px 10px;
     }}
 
+    popover.preview > contents {{
+        padding: 10px 12px 6px 12px;
+    }}
+    .preview-text {{
+        color: {p.fg};
+        font-size: {cfg.font_size - 1}px;
+    }}
+    .preview-text selection {{
+        background-color: {rgba(p.accent, 0.3)};
+    }}
     entry.rename {{
         background-color: {rgba(p.fg, 0.05)};
         border: 1px solid {rgba(p.border, 0.9)};
