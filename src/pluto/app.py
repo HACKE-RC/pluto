@@ -59,6 +59,7 @@ class ShelfApp(Gtk.Application):
         if self.cfg.shake:
             self.shake = ShakeDetector(self._on_shake, window_ms=self.cfg.shake_window_ms, travel=self.cfg.shake_travel, reversals=self.cfg.shake_reversals, requires_grab=self.cfg.shake_requires_grab)
             self.shake.on_button = self.drawer.on_global_button
+            self.shake.on_pointer = self.drawer.on_global_pointer
             self.shake.start()
 
     def _on_shake(self, x: float, y: float) -> bool:

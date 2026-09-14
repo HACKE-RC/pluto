@@ -47,6 +47,7 @@ class ShakeDetector:
         # None = unknown (binds not installed or no click yet) -> allow; True/False = left button state
         self.button_down: bool | None = None
         self.on_button: Callable[[bool], None] | None = None
+        self.on_pointer: Callable[[float, float], None] | None = None
         self._monitor: Gio.FileMonitor | None = None
         self.interval = interval_ms / 1000
         self.window = window_ms / 1000
@@ -100,6 +101,8 @@ class ShakeDetector:
             if pos != last_pos:
                 last_pos = pos
                 last_move = now
+                if self.on_pointer:
+                    GLib.idle_add(self.on_pointer, pos[0], pos[1])
             self.samples.append((now, *pos))
             while self.samples and now - self.samples[0][0] > self.window:
                 self.samples.popleft()

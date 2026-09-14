@@ -267,6 +267,8 @@ class Drawer(Gtk.Window):
         self._keyboard = LS.KeyboardMode.NONE
         self._grab_source = 0
         self._pointer_in_panel = False
+        self.polled_pointer = False
+        self._surface_origin = (0, 0)
         self.add_css_class("pluto")
 
         left = cfg.edge == "left"
@@ -406,7 +408,7 @@ class Drawer(Gtk.Window):
         motion = Gtk.EventControllerMotion()
         motion.connect("enter", lambda c, x, y: self._pointer_moved(x, y))
         motion.connect("motion", lambda c, x, y: self._pointer_moved(x, y))
-        motion.connect("leave", lambda *_: self._pointer_left())
+        motion.connect("leave", lambda *_: None if self.polled_pointer else self._pointer_left())
         self.add_controller(motion)
 
         keys = Gtk.EventControllerKey()
@@ -473,6 +475,7 @@ class Drawer(Gtk.Window):
                 self._grab_keyboard()
             return
         self.expanded = True
+        self._refresh_surface_origin()
         if focus:
             self._grab_keyboard()
         if self.store.panel_pos is not None:
@@ -580,7 +583,11 @@ class Drawer(Gtk.Window):
         self._apply_input_region()
 
     def _set_keyboard(self, wanted: bool) -> None:
-        self._set_keyboard_mode(LS.KeyboardMode.ON_DEMAND if wanted else LS.KeyboardMode.NONE)
+        if not wanted:
+            self._set_keyboard_mode(LS.KeyboardMode.NONE)
+        elif self._keyboard == LS.KeyboardMode.NONE:
+            # Never downgrade an EXCLUSIVE grab to ON_DEMAND: Hyprland drops focus on that transition.
+            self._set_keyboard_mode(LS.KeyboardMode.ON_DEMAND)
 
     def _set_keyboard_mode(self, mode) -> None:
         # Hyprland grants ON_DEMAND focus only on interaction; a hotkey-opened panel away from the pointer would
@@ -614,6 +621,34 @@ class Drawer(Gtk.Window):
         self._pointer_in_panel = False
         self._set_keyboard(False)
         self._schedule_collapse(self.cfg.auto_collapse_ms)
+
+    def on_global_pointer(self, gx: float, gy: float) -> None:
+        """Pointer position in global coordinates, from the Hyprland poller. More trustworthy than GTK
+        crossings here, which Hyprland fakes around focus changes."""
+        self.polled_pointer = True
+        if not self.expanded:
+            return
+        self._pointer_moved(gx - self._surface_origin[0], gy - self._surface_origin[1])
+
+    def _refresh_surface_origin(self) -> None:
+        try:
+            proc = Gio.Subprocess.new(["hyprctl", "-j", "layers"], Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE)
+        except GLib.Error:
+            return
+
+        def finished(p, res):
+            try:
+                _, out, _ = p.communicate_utf8_finish(res)
+                for monitor in json.loads(out).values():
+                    for level in monitor.get("levels", {}).values():
+                        for layer in level:
+                            if layer.get("namespace") == NAMESPACE:
+                                self._surface_origin = (layer["x"], layer["y"])
+                                return
+            except (GLib.Error, ValueError, KeyError, TypeError):
+                pass
+
+        proc.communicate_utf8_async(None, None, finished)
 
     def on_global_button(self, down: bool) -> None:
         """Left button pressed anywhere (from the Hyprland binds): a click outside the panel gives the keyboard back."""
