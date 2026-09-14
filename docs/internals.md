@@ -78,4 +78,9 @@ small pixmap drawn with cairo so it does not depend on the icon theme.
 uv sync
 PLUTO_DEBUG=1 uv run pluto         # drag/drop negotiation on stderr
 uv run python tools/dnd_probe.py   # see what a source offers on drop
+uv build                           # sdist + wheel in dist/
 ```
+
+Releases: tag `vX.Y.Z` and push the tag; the GitHub workflow builds the
+package and publishes `pluto-shelf` to PyPI through trusted publishing (set the
+repository up as a trusted publisher on PyPI once, no API token needed).

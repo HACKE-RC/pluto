@@ -7,7 +7,7 @@ Works with files, folders, text, links and images from the browser.
 Built for Hyprland. Runs on any compositor that has `wlr-layer-shell` and a
 tray that speaks StatusNotifierItem (waybar, quickshell and the like).
 
-![pluto](docs/shelf.png)
+![pluto](https://raw.githubusercontent.com/HACKE-RC/pluto/main/docs/shelf.png)
 
 ## What it does
 
@@ -22,6 +22,18 @@ closing the tab, and copying one puts the actual image on the clipboard.
 You can keep several shelves. Starting a new one puts the current one behind
 the tray icon with everything still on it, and you can switch back whenever.
 Shelves are saved to disk and come back after a restart.
+
+## Install
+
+```sh
+uv tool install pluto-shelf                                # from PyPI
+uv tool install git+https://github.com/HACKE-RC/pluto      # or straight from GitHub
+pluto install && hyprctl reload && pluto                    # Hyprland rules, keybind, autostart
+```
+
+You need GTK 4, gtk4-layer-shell, gobject-introspection and cairo on the
+system; see [docs/install.md](docs/install.md) for the details and for other
+compositors.
 
 ## Usage
 

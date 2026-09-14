@@ -1,9 +1,10 @@
 [project]
-name = "pluto"
+name = "pluto-shelf"
 version = "0.1.0"
 description = "Pluto: a drop shelf for Wayland. Drag anything to the screen edge, keep it, drag it back out later."
 readme = "README.md"
 license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     { name = "HACKE-RC", email = "60568652+HACKE-RC@users.noreply.github.com" }
 ]
@@ -20,12 +21,20 @@ dependencies = [
     "pygobject>=3.50",
 ]
 
+[project.urls]
+Homepage = "https://github.com/HACKE-RC/pluto"
+Repository = "https://github.com/HACKE-RC/pluto"
+Issues = "https://github.com/HACKE-RC/pluto/issues"
+
 [project.scripts]
 pluto = "pluto:main"
 
 [build-system]
 requires = ["uv_build>=0.12.9,<0.13.0"]
 build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "pluto"
 
 [tool.ruff]
 line-length = 140
