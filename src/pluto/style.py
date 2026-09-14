@@ -22,7 +22,7 @@ def build_css(cfg: Config) -> str:
         outline-style: none;
         -gtk-icon-style: symbolic;
     }}
-    window.shelf {{
+    window.pluto {{
         background-color: transparent;
         color: {p.fg};
     }}

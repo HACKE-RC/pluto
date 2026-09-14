@@ -223,7 +223,7 @@ def download_image(store: Store, item: Item, done: Callable[[Item | None], None]
 
     def work():
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": "shelf/0.1 (+drop shelf)"})
+            req = urllib.request.Request(url, headers={"User-Agent": "pluto/0.1 (+drop shelf)"})
             with urllib.request.urlopen(req, timeout=20) as resp:
                 ctype = resp.headers.get("Content-Type", "")
                 data = resp.read(MAX_DOWNLOAD + 1)
@@ -237,4 +237,4 @@ def download_image(store: Store, item: Item, done: Callable[[Item | None], None]
         except Exception:  # noqa: BLE001 — any failure just leaves the link item in place
             GLib.idle_add(done, None)
 
-    threading.Thread(target=work, name="shelf-download", daemon=True).start()
+    threading.Thread(target=work, name="pluto-download", daemon=True).start()

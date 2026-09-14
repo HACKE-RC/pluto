@@ -1,7 +1,7 @@
 [project]
-name = "shelf"
+name = "pluto"
 version = "0.1.0"
-description = "A drop shelf for Wayland: drag anything to the screen edge, keep it, drag it back out later."
+description = "Pluto: a drop shelf for Wayland. Drag anything to the screen edge, keep it, drag it back out later."
 readme = "README.md"
 license = "MIT"
 authors = [
@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [project.scripts]
-shelf = "shelf:main"
+pluto = "pluto:main"
 
 [build-system]
 requires = ["uv_build>=0.12.9,<0.13.0"]

@@ -223,8 +223,8 @@ class Tray:
     def _sni_get(self, conn, sender, path, iface, prop):
         values = {
             "Category": GLib.Variant("s", "ApplicationStatus"),
-            "Id": GLib.Variant("s", "shelf"),
-            "Title": GLib.Variant("s", "Shelf"),
+            "Id": GLib.Variant("s", "pluto"),
+            "Title": GLib.Variant("s", "Pluto"),
             "Status": GLib.Variant("s", "Active"),
             "WindowId": GLib.Variant("i", 0),
             "IconName": GLib.Variant("s", ""),
@@ -234,7 +234,7 @@ class Tray:
             "AttentionIconName": GLib.Variant("s", ""),
             "AttentionIconPixmap": GLib.Variant("a(iiay)", []),
             "AttentionMovieName": GLib.Variant("s", ""),
-            "ToolTip": GLib.Variant("(sa(iiay)ss)", ("", [], "Shelf", self._tooltip_text())),
+            "ToolTip": GLib.Variant("(sa(iiay)ss)", ("", [], "Pluto", self._tooltip_text())),
             "ItemIsMenu": GLib.Variant("b", False),
             "Menu": GLib.Variant("o", MENU_PATH),
         }

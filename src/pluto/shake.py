@@ -62,7 +62,7 @@ class ShakeDetector:
             return False
         if self.requires_grab:
             self._watch_button()
-        self._thread = threading.Thread(target=self._run, args=(path,), name="shelf-shake", daemon=True)
+        self._thread = threading.Thread(target=self._run, args=(path,), name="pluto-shake", daemon=True)
         self._thread.start()
         return True
 

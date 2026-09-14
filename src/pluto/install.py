@@ -9,13 +9,13 @@ from .config import BUTTON_FILE, NAMESPACE, XDG_CONFIG, write_default
 
 HYPR_DIR = XDG_CONFIG / "hypr"
 HYPR_MAIN = HYPR_DIR / "hyprland.conf"
-HYPR_SNIPPET = HYPR_DIR / "shelf.conf"
-SOURCE_LINE = "source = ~/.config/hypr/shelf.conf"
+HYPR_SNIPPET = HYPR_DIR / "pluto.conf"
+SOURCE_LINE = "source = ~/.config/hypr/pluto.conf"
 
 
 def snippet(exe: str, bind: str) -> str:
     return f"""\
-# shelf — drop shelf for Wayland. Managed by `shelf install`; edit freely.
+# pluto — drop shelf for Wayland. Managed by `pluto install`; edit freely.
 layerrule = blur on, match:namespace ^{NAMESPACE}$
 layerrule = ignore_alpha 0.2, match:namespace ^{NAMESPACE}$
 layerrule = no_anim on, match:namespace ^{NAMESPACE}$
@@ -35,10 +35,10 @@ def run(args: list[str]) -> int:
     if args[:1] == ["--bind"] and len(args) > 1:
         bind = args[1]
     elif args:
-        print("usage: shelf install [--bind 'SUPER SHIFT, Z']", file=sys.stderr)
+        print("usage: pluto install [--bind 'SUPER SHIFT, Z']", file=sys.stderr)
         return 2
 
-    exe = shutil.which("shelf") or os.path.abspath(sys.argv[0])
+    exe = shutil.which("pluto") or os.path.abspath(sys.argv[0])
     HYPR_DIR.mkdir(parents=True, exist_ok=True)
     HYPR_SNIPPET.write_text(snippet(exe, bind))
     print(f"wrote {HYPR_SNIPPET}")

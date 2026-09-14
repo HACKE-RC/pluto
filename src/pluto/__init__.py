@@ -1,4 +1,4 @@
-"""shelf — a drop shelf for Wayland."""
+"""pluto — a drop shelf for Wayland."""
 
 from __future__ import annotations
 
@@ -13,15 +13,15 @@ def _ensure_layer_shell_preloaded() -> None:
     import ctypes.util
     import os
 
-    if os.environ.get("SHELF_PRELOADED") == "1":
+    if os.environ.get("PLUTO_PRELOADED") == "1":
         return
     lib = ctypes.util.find_library("gtk4-layer-shell")
     if not lib:
-        sys.stderr.write("shelf: gtk4-layer-shell is not installed (libgtk4-layer-shell.so not found)\n")
+        sys.stderr.write("pluto: gtk4-layer-shell is not installed (libgtk4-layer-shell.so not found)\n")
         sys.exit(1)
     env = dict(os.environ)
     env["LD_PRELOAD"] = " ".join(filter(None, [lib, env.get("LD_PRELOAD")]))
-    env["SHELF_PRELOADED"] = "1"
+    env["PLUTO_PRELOADED"] = "1"
     os.execve(sys.executable, [sys.executable, *sys.argv], env)
 
 
@@ -42,7 +42,7 @@ def main() -> int:
         print(USAGE, end="")
         return 0
     if args[:1] in (["-V"], ["--version"]):
-        print(f"shelf {__version__}")
+        print(f"pluto {__version__}")
         return 0
 
     _ensure_layer_shell_preloaded()

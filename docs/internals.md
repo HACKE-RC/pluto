@@ -61,9 +61,9 @@ KVM software. So the daemon polls `cursorpos` on Hyprland's IPC socket, 40
 times a second while the pointer moves and about 7 times a second when it is
 still. That costs the compositor roughly 0.3 % of a core. Whether the left
 button is down comes from two non-consuming binds that write to
-`$XDG_RUNTIME_DIR/shelf-button`, which the daemon watches with inotify.
+`$XDG_RUNTIME_DIR/pluto-button`, which the daemon watches with inotify.
 
-If you use Hyprland's Lua config manager, `hypr/shelf.lua` does the same
+If you use Hyprland's Lua config manager, `hypr/pluto.lua` does the same
 polling inside the compositor with `hl.timer` and `hl.get_cursor_pos()`.
 
 ## The tray
@@ -76,6 +76,6 @@ small pixmap drawn with cairo so it does not depend on the icon theme.
 
 ```sh
 uv sync
-SHELF_DEBUG=1 uv run shelf         # drag/drop negotiation on stderr
+PLUTO_DEBUG=1 uv run pluto         # drag/drop negotiation on stderr
 uv run python tools/dnd_probe.py   # see what a source offers on drop
 ```

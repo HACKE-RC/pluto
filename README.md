@@ -1,13 +1,13 @@
-# shelf
+# pluto
 
-A drop shelf for Wayland. Drag something to the edge of the screen, drop it on
+Pluto is a drop shelf for Wayland. Drag something to the edge of the screen, drop it on
 the shelf that slides out, go find where it needs to go, then drag it back out.
 Works with files, folders, text, links and images from the browser.
 
 Built for Hyprland. Runs on any compositor that has `wlr-layer-shell` and a
 tray that speaks StatusNotifierItem (waybar, quickshell and the like).
 
-![shelf](docs/shelf.png)
+![pluto](docs/shelf.png)
 
 ## What it does
 
@@ -52,11 +52,11 @@ Double-click the shelf name to rename it. The `x` in the corner closes the panel
 From the command line:
 
 ```
-shelf              start the daemon
-shelf toggle       open or close the panel
-shelf new          start a new shelf, keep the current one in the tray
-shelf add FILE...  put files, folders, URLs or text on the shelf
-shelf quit         stop the daemon
+pluto              start the daemon
+pluto toggle       open or close the panel
+pluto new          start a new shelf, keep the current one in the tray
+pluto add FILE...  put files, folders, URLs or text on the shelf
+pluto quit         stop the daemon
 ```
 
 ## More

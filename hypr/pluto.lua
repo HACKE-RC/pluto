@@ -1,8 +1,8 @@
 -- Optional: shake-to-summon evaluated inside Hyprland (Lua config manager only).
 -- Polls the cursor in-process instead of over the IPC socket; set `shake = false`
--- in ~/.config/shelf/config.toml when using this. Load it from hyprland.lua with:
---   require("shelf")   -- after copying this file next to hyprland.lua
-local SHELF     = os.getenv("HOME") .. "/.local/bin/shelf"
+-- in ~/.config/pluto/config.toml when using this. Load it from hyprland.lua with:
+--   require("pluto")   -- after copying this file next to hyprland.lua
+local SHELF     = os.getenv("HOME") .. "/.local/bin/pluto"
 local WINDOW_MS = 600   -- shake must complete within this
 local TRAVEL    = 40    -- minimum px per leg
 local REVERSALS = 4     -- direction changes required

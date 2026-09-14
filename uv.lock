@@ -3,6 +3,21 @@ revision = 3
 requires-python = ">=3.12"
 
 [[package]]
+name = "pluto"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "pycairo" },
+    { name = "pygobject" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "pycairo", specifier = ">=1.26" },
+    { name = "pygobject", specifier = ">=3.50" },
+]
+
+[[package]]
 name = "pycairo"
 version = "1.29.1"
 source = { registry = "https://pypi.org/simple" }
@@ -33,18 +48,3 @@ dependencies = [
     { name = "pycairo" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/a3/9b/473a5234ec86bce978d3583adc62441c84cc57181c4ea8a8978997c7f0c1/pygobject-3.58.0.tar.gz", hash = "sha256:45068697de3ffe46840ca369705f23118b34db4f7deb63f6eff079a6734ddcca", size = 1408568, upload-time = "2026-08-28T06:50:27.22Z" }
-
-[[package]]
-name = "shelf"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "pycairo" },
-    { name = "pygobject" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "pycairo", specifier = ">=1.26" },
-    { name = "pygobject", specifier = ">=3.50" },
-]

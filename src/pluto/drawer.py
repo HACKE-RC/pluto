@@ -14,12 +14,12 @@ from .store import FILE, IMAGE, TEXT, URL, Item, Store
 
 THUMB = 30
 EDGE_PAD = 12
-DEBUG = bool(os.environ.get("SHELF_DEBUG"))
+DEBUG = bool(os.environ.get("PLUTO_DEBUG"))
 
 
 def log(*parts) -> None:
     if DEBUG:
-        print("shelf:", *parts, file=sys.stderr, flush=True)
+        print("pluto:", *parts, file=sys.stderr, flush=True)
 
 
 def human_size(n: int) -> str:
@@ -252,7 +252,7 @@ class Slide(Gtk.Widget):
 
 class Drawer(Gtk.Window):
     def __init__(self, app: Gtk.Application, store: Store, cfg: Config):
-        super().__init__(application=app, title="Shelf", decorated=False)
+        super().__init__(application=app, title="Pluto", decorated=False)
         self.store = store
         self.cfg = cfg
         self.expanded = False
@@ -265,7 +265,7 @@ class Drawer(Gtk.Window):
         self._collapse_source = 0
         self._last_dnd_motion = 0
         self._keyboard = False
-        self.add_css_class("shelf")
+        self.add_css_class("pluto")
 
         left = cfg.edge == "left"
         self.pinned = store.pinned

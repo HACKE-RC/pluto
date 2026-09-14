@@ -8,15 +8,15 @@ from pathlib import Path
 XDG_CONFIG = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
 XDG_DATA = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
 
-CONFIG_DIR = XDG_CONFIG / "shelf"
+CONFIG_DIR = XDG_CONFIG / "pluto"
 CONFIG_FILE = CONFIG_DIR / "config.toml"
-DATA_DIR = XDG_DATA / "shelf"
+DATA_DIR = XDG_DATA / "pluto"
 STATE_FILE = DATA_DIR / "state.json"
 BLOB_DIR = DATA_DIR / "blobs"
-BUTTON_FILE = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "shelf-button"
+BUTTON_FILE = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "pluto-button"
 
-APP_ID = "io.shelf.Shelf"
-NAMESPACE = "shelf"
+APP_ID = "io.pluto.Pluto"
+NAMESPACE = "pluto"
 
 
 @dataclass
@@ -55,7 +55,7 @@ class Config:
 
 
 DEFAULT_CONFIG_TOML = """\
-# shelf configuration — every key is optional; these are the defaults.
+# pluto configuration — every key is optional; these are the defaults.
 
 edge = "right"            # screen edge the drawer lives on: "right" or "left"
 width = 320               # drawer width in logical pixels
@@ -71,7 +71,7 @@ remove_on_drag_out = false # remove an item from the shelf after dragging it out
 slide_ms = 180            # open/close animation duration
 drag_out_action = "copy"  # "copy": targets always copy; "move": the target may move the file (shelf item goes stale)
 shake = true              # shake the pointer left-right to summon the panel (Hyprland only)
-shake_requires_grab = true # only while the left button is held (needs the binds from `shelf install`)
+shake_requires_grab = true # only while the left button is held (needs the binds from `pluto install`)
 shake_reversals = 4       # direction changes needed within shake_window_ms
 shake_travel = 40         # minimum pixels per leg of the shake
 shake_window_ms = 600

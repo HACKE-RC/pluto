@@ -1,8 +1,8 @@
 # Configuration
 
-`shelf config` writes `~/.config/shelf/config.toml` with the defaults. Every
+`pluto config` writes `~/.config/pluto/config.toml` with the defaults. Every
 key is optional; leave out what you do not want to change. The daemon reads the
-file at startup, so restart it (`shelf quit && shelf`) after editing.
+file at startup, so restart it (`pluto quit && shelf`) after editing.
 
 ```toml
 edge = "right"            # "right" or "left"
@@ -49,5 +49,5 @@ you, drop `shake_reversals` to 3. If it fires when you did not mean it, raise
 whenever it is offered, so Thunar and friends will move the file, and the item
 on the shelf will show as MISSING afterwards. Copy is the safer default.
 
-`SHELF_DEBUG=1 shelf` logs drag and drop negotiation to stderr, which is the
+`PLUTO_DEBUG=1 shelf` logs drag and drop negotiation to stderr, which is the
 first thing to look at when a drop does nothing.

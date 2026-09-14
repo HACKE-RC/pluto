@@ -12,7 +12,7 @@ from .shake import ShakeDetector
 from .tray import Tray
 
 VERBS = ("toggle", "show", "hide", "new", "quit")
-USAGE = """usage: shelf [command]
+USAGE = """usage: pluto [command]
 
   (none)        start the daemon (or report that it is already running)
   toggle        open / close the drawer
@@ -22,7 +22,7 @@ USAGE = """usage: shelf [command]
   add ITEM...   put files, folders, URLs or text on the active shelf
   quit          stop the daemon
   install       write Hyprland rules, keybind and autostart
-  config        create ~/.config/shelf/config.toml with the defaults
+  config        create ~/.config/pluto/config.toml with the defaults
 """
 
 
@@ -73,7 +73,7 @@ class ShelfApp(Gtk.Application):
         args = cmdline.get_arguments()[1:]
         if not args:
             if cmdline.get_is_remote():
-                cmdline.printerr_literal("shelf: already running\n")
+                cmdline.printerr_literal("pluto: already running\n")
             return 0
         verb = args[0]
         if verb in VERBS:
