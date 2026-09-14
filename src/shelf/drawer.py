@@ -473,18 +473,36 @@ class Drawer(Gtk.Window):
 
     def _place_top(self, top: int) -> None:
         self._anchor_y = None
+        self._panel_top = self._clamp_top(top)
         self.revealer.set_valign(Gtk.Align.START)
-        self.revealer.set_margin_top(self._clamp_top(top))
+        self.revealer.set_margin_top(self._panel_top)
+
+    def _pointer_window_y(self, gesture) -> float | None:
+        # Offsets from the gesture are in the header's own coordinates, and the header moves with the panel,
+        # so convert the current point to window coordinates before comparing against the start.
+        ok, x, y = gesture.get_point(None)
+        if not ok:
+            return None
+        widget = gesture.get_widget()
+        ok2, pt = widget.compute_point(self, Graphene.Point().init(x, y))
+        return pt.y if ok2 else None
 
     def _on_move_begin(self, gesture, x, y) -> None:
         self._move_start_top = self._current_top()
+        self._move_start_y = self._pointer_window_y(gesture)
         self._cancel_collapse()
 
     def _on_move_update(self, gesture, dx, dy) -> None:
-        self._place_top(self._move_start_top + dy)
+        y = self._pointer_window_y(gesture)
+        if y is None or self._move_start_y is None:
+            return
+        self._place_top(self._move_start_top + (y - self._move_start_y))
 
     def _on_move_end(self, gesture, dx, dy) -> None:
-        top = self._current_top()
+        # The allocation lags a frame behind the last update; use the position we asked for.
+        top = getattr(self, "_panel_top", None)
+        if top is None:
+            top = self._current_top()
         self.store.set_panel_y(top)
         log("panel moved to", top)
 
