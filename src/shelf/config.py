@@ -44,9 +44,9 @@ class Config:
     linger_after_drop_ms: int = 2500
     remove_on_drag_out: bool = True
     shake: bool = True
-    shake_reversals: int = 3
-    shake_travel: int = 25
-    shake_window_ms: int = 500
+    shake_reversals: int = 4
+    shake_travel: int = 40
+    shake_window_ms: int = 600
     palette: Palette = field(default_factory=Palette)
 
 
@@ -65,9 +65,9 @@ auto_collapse_ms = 1200   # collapse this long after the pointer leaves
 linger_after_drop_ms = 2500
 remove_on_drag_out = true # dragging an item out removes it (hold Ctrl to keep)
 shake = true              # shake the pointer left-right to summon the panel (Hyprland only)
-shake_reversals = 3       # direction changes needed within shake_window_ms
-shake_travel = 25         # minimum pixels per leg of the shake
-shake_window_ms = 500
+shake_reversals = 4       # direction changes needed within shake_window_ms
+shake_travel = 40         # minimum pixels per leg of the shake
+shake_window_ms = 600
 
 [palette]
 bg      = "#1e1e2e"

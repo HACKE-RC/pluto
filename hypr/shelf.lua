@@ -3,9 +3,9 @@
 -- in ~/.config/shelf/config.toml when using this. Load it from hyprland.lua with:
 --   require("shelf")   -- after copying this file next to hyprland.lua
 local SHELF     = os.getenv("HOME") .. "/.local/bin/shelf"
-local WINDOW_MS = 500   -- shake must complete within this
-local TRAVEL    = 25    -- minimum px per leg
-local REVERSALS = 3     -- direction changes required
+local WINDOW_MS = 600   -- shake must complete within this
+local TRAVEL    = 40    -- minimum px per leg
+local REVERSALS = 4     -- direction changes required
 local COOLDOWN  = 1200
 
 local samples, last_fire = {}, 0

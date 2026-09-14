@@ -96,9 +96,9 @@ auto_collapse_ms = 1200   # after the pointer leaves
 linger_after_drop_ms = 2500
 remove_on_drag_out = true # Ctrl-drag keeps the item either way
 shake = true              # shake-to-summon (Hyprland IPC); tune with
-shake_reversals = 3       #   reversals / travel (px per leg) / window_ms
-shake_travel = 25
-shake_window_ms = 500
+shake_reversals = 4       #   reversals / travel (px per leg) / window_ms
+shake_travel = 40
+shake_window_ms = 600
 
 [palette]                 # defaults are catppuccin mocha
 bg = "#1e1e2e"  surface = "#313244"  fg = "#cdd6f4"  muted = "#6c7086"
