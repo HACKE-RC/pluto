@@ -83,6 +83,84 @@ def content_for(items: list[Item]) -> Gdk.ContentProvider | None:
     return providers[0] if len(providers) == 1 else Gdk.ContentProvider.new_union(providers)
 
 
+class TypeGlyph(Gtk.DrawingArea):
+    """A small monoline glyph for an item: document with its extension, folder, paragraph, chain link."""
+
+    def __init__(self, item: Item, color: str):
+        super().__init__()
+        self.item = item
+        self.color = color
+        self.set_size_request(THUMB, THUMB)
+        self.set_draw_func(self._draw)
+
+    def _rgb(self):
+        h = self.color.lstrip("#")
+        return tuple(int(h[i : i + 2], 16) / 255 for i in (0, 2, 4))
+
+    def _draw(self, area, ctx, w, h):
+        r, g, b = self._rgb()
+        ctx.set_line_width(1.0)
+        ctx.set_line_join(cairo.LINE_JOIN_ROUND)
+        ctx.set_line_cap(cairo.LINE_CAP_ROUND)
+        ctx.set_source_rgba(r, g, b, 0.6)
+        item = self.item
+        if item.kind == TEXT:
+            for i, length in enumerate((14, 14, 9)):
+                y = 10.5 + i * 4.5
+                ctx.move_to(8, y)
+                ctx.line_to(8 + length, y)
+            ctx.stroke()
+        elif item.kind == URL:
+            ctx.translate(15, 15)
+            ctx.rotate(-0.785)
+            for dx in (-4, 4):
+                self._rounded_rect(ctx, dx - 3.5, -2.5, 7, 5, 2.5)
+                ctx.stroke()
+            ctx.identity_matrix()
+        elif os.path.isdir(item.path or ""):
+            ctx.move_to(6.5, 10.5)
+            ctx.line_to(6.5, 22.5)
+            ctx.line_to(23.5, 22.5)
+            ctx.line_to(23.5, 12.5)
+            ctx.line_to(14.5, 12.5)
+            ctx.line_to(12.5, 9.5)
+            ctx.line_to(7.5, 9.5)
+            ctx.close_path()
+            ctx.stroke()
+        else:
+            if item.missing:
+                ctx.set_dash([2.0, 2.0])
+            ctx.move_to(8.5, 5.5)
+            ctx.line_to(17.5, 5.5)
+            ctx.line_to(21.5, 9.5)
+            ctx.line_to(21.5, 24.5)
+            ctx.line_to(8.5, 24.5)
+            ctx.close_path()
+            ctx.stroke()
+            ctx.set_dash([])
+            ctx.move_to(17.5, 5.5)
+            ctx.line_to(17.5, 9.5)
+            ctx.line_to(21.5, 9.5)
+            ctx.stroke()
+            ext = os.path.splitext(item.path or "")[1].lstrip(".").upper()[:4]
+            if ext and not item.missing:
+                ctx.select_font_face("JetBrains Mono", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
+                ctx.set_font_size(6.0 if len(ext) > 3 else 6.5)
+                extents = ctx.text_extents(ext)
+                ctx.move_to(15 - extents.width / 2 - extents.x_bearing, 20.5)
+                ctx.set_source_rgba(r, g, b, 0.85)
+                ctx.show_text(ext)
+
+    @staticmethod
+    def _rounded_rect(ctx, x, y, w, h, radius):
+        ctx.new_sub_path()
+        ctx.arc(x + w - radius, y + radius, radius, -1.5708, 0)
+        ctx.arc(x + w - radius, y + h - radius, radius, 0, 1.5708)
+        ctx.arc(x + radius, y + h - radius, radius, 1.5708, 3.1416)
+        ctx.arc(x + radius, y + radius, radius, 3.1416, 4.7124)
+        ctx.close_path()
+
+
 class ItemRow(Gtk.ListBoxRow):
     def __init__(self, item: Item, drawer: "Drawer"):
         super().__init__()
@@ -127,17 +205,7 @@ class ItemRow(Gtk.ListBoxRow):
         self.add_controller(drag)
 
     def _set_icon(self) -> None:
-        if self.item.kind == URL:
-            gicon = Gio.ThemedIcon.new_from_names(["web-browser-symbolic", "insert-link-symbolic", "emblem-symbolic-link"])
-        elif self.item.kind == TEXT:
-            gicon = Gio.ThemedIcon.new_with_default_fallbacks("text-x-generic-symbolic")
-        elif os.path.isdir(self.item.path or ""):
-            gicon = Gio.ThemedIcon.new_with_default_fallbacks("folder-symbolic")
-        else:
-            gicon = Gio.content_type_get_symbolic_icon(ingest.content_type(self.item))
-        image = Gtk.Image.new_from_gicon(gicon)
-        image.set_pixel_size(15)
-        self.thumb.append(image)
+        self.thumb.append(TypeGlyph(self.item, self.drawer.cfg.palette.fg))
 
     def _load_thumbnail(self) -> None:
         gfile = Gio.File.new_for_path(self.item.path)
