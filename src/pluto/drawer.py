@@ -478,6 +478,8 @@ class Drawer(Gtk.Window):
         self._refresh_surface_origin()
         if focus:
             self._grab_keyboard()
+        else:
+            self._set_keyboard_mode(LS.KeyboardMode.ON_DEMAND)
         if self.store.panel_pos is not None:
             self._set_position(*self.store.panel_pos)
             self.revealer.set_reveal_child(True)
@@ -579,15 +581,20 @@ class Drawer(Gtk.Window):
         self._pointer_in_panel = False
         self.remove_css_class("drop-hover")
         self.revealer.set_reveal_child(False)
-        self._set_keyboard(False)
+        self._set_keyboard_mode(LS.KeyboardMode.NONE)
         self._apply_input_region()
 
     def _set_keyboard(self, wanted: bool) -> None:
         if not wanted:
-            self._set_keyboard_mode(LS.KeyboardMode.NONE)
+            self._release_keyboard()
         elif self._keyboard == LS.KeyboardMode.NONE:
-            # Never downgrade an EXCLUSIVE grab to ON_DEMAND: Hyprland drops focus on that transition.
             self._set_keyboard_mode(LS.KeyboardMode.ON_DEMAND)
+
+    def _release_keyboard(self) -> None:
+        # While the panel is open it stays at least ON_DEMAND: Hyprland only grants on-demand focus when the
+        # mode is already set at the time of the click, so switching it on during the click is too late.
+        # Going EXCLUSIVE -> ON_DEMAND is how focus is handed back (Hyprland drops it on that transition).
+        self._set_keyboard_mode(LS.KeyboardMode.ON_DEMAND if self.expanded else LS.KeyboardMode.NONE)
 
     def _set_keyboard_mode(self, mode) -> None:
         # Hyprland grants ON_DEMAND focus only on interaction; a hotkey-opened panel away from the pointer would
@@ -652,8 +659,8 @@ class Drawer(Gtk.Window):
 
     def on_global_button(self, down: bool) -> None:
         """Left button pressed anywhere (from the Hyprland binds): a click outside the panel gives the keyboard back."""
-        if down and not self._pointer_in_panel and self._keyboard != LS.KeyboardMode.NONE:
-            self._set_keyboard(False)
+        if down and not self._pointer_in_panel and self._keyboard == LS.KeyboardMode.EXCLUSIVE:
+            self._release_keyboard()
 
     def _grab_keyboard(self) -> None:
         self._set_keyboard_mode(LS.KeyboardMode.EXCLUSIVE)
@@ -663,7 +670,7 @@ class Drawer(Gtk.Window):
     def _grab_timeout(self) -> bool:
         self._grab_source = 0
         if self._keyboard == LS.KeyboardMode.EXCLUSIVE:
-            self._set_keyboard_mode(LS.KeyboardMode.NONE)
+            self._release_keyboard()
         return False
 
     def _cancel_grab_timeout(self) -> None:
@@ -942,6 +949,6 @@ class Drawer(Gtk.Window):
             name = Gdk.keyval_name(keyval) or ""
             is_modifier = name.endswith(("_L", "_R")) or name in ("ISO_Level3_Shift", "Caps_Lock", "Num_Lock")
             if self._keyboard == LS.KeyboardMode.EXCLUSIVE and not is_modifier:
-                self._set_keyboard_mode(LS.KeyboardMode.NONE)
+                self._release_keyboard()
             return False
         return True
