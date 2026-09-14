@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 
 def _ensure_layer_shell_preloaded() -> None:
