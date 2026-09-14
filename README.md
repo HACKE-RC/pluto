@@ -21,6 +21,9 @@ drag touches it, and stays out of the way otherwise.
 
 - **Drag to the right edge.** The panel slides in at your pointer. Drop.
 - **`Super+Shift+Z`** toggles the panel at the pointer — it works mid-drag too.
+- **Shake the pointer** left-right (Hyprland only) and the panel opens at the
+  pointer, like Dropover. It can't tell whether you are dragging, so it simply
+  closes again after a few seconds if nothing arrives.
 - **Drag things back out** one by one, multi-select with `Ctrl`/`Shift`-click, or
   grab the *drag all* handle at the bottom. Dragging out removes the item from
   the shelf; hold `Ctrl` while dragging to keep it.
@@ -92,6 +95,10 @@ font_size = 12
 auto_collapse_ms = 1200   # after the pointer leaves
 linger_after_drop_ms = 2500
 remove_on_drag_out = true # Ctrl-drag keeps the item either way
+shake = true              # shake-to-summon (Hyprland IPC); tune with
+shake_reversals = 3       #   reversals / travel (px per leg) / window_ms
+shake_travel = 25
+shake_window_ms = 500
 
 [palette]                 # defaults are catppuccin mocha
 bg = "#1e1e2e"  surface = "#313244"  fg = "#cdd6f4"  muted = "#6c7086"
@@ -100,8 +107,8 @@ dim = "#585b70" accent = "#89b4fa"   danger = "#f38ba8" border = "#45475a"
 
 ## How it works
 
-Wayland gives a client no way to see a drag until the pointer is over one of
-its own surfaces, so there is no "shake to summon". Instead `shelf` keeps one
+Wayland gives a client no way to see a drag — or the pointer — until it is over
+one of its own surfaces. `shelf` keeps one
 full-height layer-shell surface mapped on the screen edge at all times, with its
 **input region** shrunk to a 3 px strip. A drag entering the strip is a normal
 `wl_data_device.enter`; the panel then widens the input region and slides in —
@@ -118,6 +125,12 @@ Other things learned along the way, in case you build something similar:
   directly over GDBus — no GTK3, no appindicator.
 - Blur comes from the compositor (`layerrule = blur`); `ignore_alpha` keeps the
   transparent parts of the surface from being blurred.
+- Shake detection polls `cursorpos` on Hyprland's IPC socket at 40 Hz from a
+  thread — the only compositor-specific piece; everything else is plain
+  layer-shell and works elsewhere with `shake = false`.
+- A fully transparent layer surface makes GTK skip rendering, and without a
+  frame GDK never sends the window geometry gtk4-layer-shell sizes the surface
+  from; the root widget keeps a 1 % background so the surface always draws.
 
 ## Development
 

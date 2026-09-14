@@ -8,6 +8,7 @@ from . import config, ingest, style
 from .config import APP_ID
 from .drawer import Drawer
 from .store import Item, Store
+from .shake import ShakeDetector
 from .tray import Tray
 
 VERBS = ("toggle", "show", "hide", "new", "quit")
@@ -32,6 +33,7 @@ class ShelfApp(Gtk.Application):
         self.store: Store | None = None
         self.drawer: Drawer | None = None
         self.tray: Tray | None = None
+        self.shake: ShakeDetector | None = None
 
     def do_startup(self) -> None:
         Gtk.Application.do_startup(self)
@@ -54,6 +56,15 @@ class ShelfApp(Gtk.Application):
             action.connect("activate", self._on_verb, verb)
             self.add_action(action)
         self.drawer.present()
+        if self.cfg.shake:
+            self.shake = ShakeDetector(self._on_shake, window_ms=self.cfg.shake_window_ms, travel=self.cfg.shake_travel, reversals=self.cfg.shake_reversals)
+            self.shake.start()
+
+    def _on_shake(self, x: float, y: float) -> bool:
+        if not self.drawer.expanded:
+            self.drawer.expand()
+            self.drawer._schedule_collapse(3500)
+        return False
 
     def do_activate(self) -> None:
         pass
