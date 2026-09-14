@@ -1,99 +1,129 @@
 # pluto
 
-Pluto is a drop shelf for Wayland. Drag something to the edge of the screen, drop it on
-the shelf that slides out, go find where it needs to go, then drag it back out.
-Works with files, folders, text, links and images from the browser.
+A drop shelf for Wayland. Drag a file, a link, some text or an image from the
+browser to the edge of the screen and a small panel slides out to hold it.
+Switch workspaces, find the window it belongs in, drag it back out.
 
-Built for Hyprland. Runs on any compositor that has `wlr-layer-shell` and a
-tray that speaks StatusNotifierItem (waybar, quickshell and the like).
+Made for Hyprland. It also runs on other compositors that have
+`wlr-layer-shell` and a StatusNotifierItem tray (waybar, quickshell and the
+like); see the notes in [docs/install.md](docs/install.md).
 
 ![pluto](https://raw.githubusercontent.com/HACKE-RC/pluto/main/docs/shelf.png)
 
+## Why
+
+Moving something between two windows on a tiling compositor means switching
+workspaces with the mouse button held down. macOS has Dropover and Yoink for
+this, Windows has Dropshelf, and I could not find anything on Wayland that
+felt right. So this is an invisible 3 px strip on the screen edge that turns
+into a shelf when a drag touches it, plus a shake gesture for when the edge is
+too far away.
+
 ## What it does
 
-The shelf is invisible until you need it: a 3 px strip on the right edge of the
-screen. Drag anything onto that strip and a panel slides in at your pointer.
-Drop, and the item is parked there. Files and folders are kept by reference,
-so nothing is copied or moved until you drag it somewhere. Images dragged out
-of a browser are saved locally (the pixels the browser hands over, or a
-download of the image URL when it only hands over a link), so they survive
-closing the tab, and copying one puts the actual image on the clipboard.
+The shelf takes files, folders, text, links and images. Files and folders are
+kept by reference, so nothing is copied or moved until you drag it somewhere.
+Images dragged out of a browser are saved to `~/.local/share/pluto/blobs/`,
+so they are still there after you close the tab.
 
-You can keep several shelves. Starting a new one puts the current one behind
-the tray icon with everything still on it, and you can switch back whenever.
-Shelves are saved to disk and come back after a restart.
+Drag items back out one at a time, select several with `Ctrl` or `Shift`, or
+grab the `⋮⋮` handle at the bottom to take everything in one go. Drag-outs copy
+by default, so the original file and the shelf item both stay put.
+
+You can drag the panel by its header to put it anywhere on the screen, and pin
+it so it stays open while you work in other windows. Clicks outside the panel
+still go to whatever is under them.
+
+You can keep more than one shelf. Starting a new one parks the current one
+behind the tray icon with everything still on it, and you can switch back any
+time. Shelves are saved to disk and come back after a restart.
 
 ## Install
 
-1. System libraries (GTK 4, gtk4-layer-shell, gobject-introspection, cairo):
+System libraries first (GTK 4, gtk4-layer-shell, gobject-introspection, cairo):
 
-   ```sh
-   sudo pacman -S gtk4 gtk4-layer-shell gobject-introspection cairo        # Arch
-   sudo apt install libgtk-4-dev libgtk4-layer-shell-dev libgirepository-2.0-dev libcairo2-dev  # Debian/Ubuntu
-   sudo dnf install gtk4-devel gtk4-layer-shell-devel gobject-introspection-devel cairo-devel  # Fedora
-   ```
+```sh
+sudo pacman -S gtk4 gtk4-layer-shell gobject-introspection cairo                                # Arch
+sudo apt install libgtk-4-dev libgtk4-layer-shell-dev libgirepository-2.0-dev libcairo2-dev      # Debian, Ubuntu
+sudo dnf install gtk4-devel gtk4-layer-shell-devel gobject-introspection-devel cairo-devel       # Fedora
+```
 
-2. The tool itself, any one of these:
+Then the tool, whichever way you prefer:
 
-   ```sh
-   uv tool install pluto-shelf                            # from PyPI
-   pipx install pluto-shelf                               # same, with pipx
-   uv tool install git+https://github.com/HACKE-RC/pluto  # latest from GitHub
-   ```
+```sh
+uv tool install pluto-shelf                            # from PyPI
+pipx install pluto-shelf                               # same thing with pipx
+uv tool install git+https://github.com/HACKE-RC/pluto  # latest from GitHub
+```
 
-3. Hyprland rules, keybind and autostart, then start it:
+Then the Hyprland side:
 
-   ```sh
-   pluto install
-   hyprctl reload
-   pluto
-   ```
+```sh
+pluto install
+hyprctl reload
+pluto
+```
 
-`pluto install` writes `~/.config/hypr/pluto.conf` and adds one `source` line to
-your `hyprland.conf`; see [docs/install.md](docs/install.md) for what is in it,
-how to undo it, and notes for other compositors.
+`pluto install` writes `~/.config/hypr/pluto.conf` and adds one `source` line
+to your `hyprland.conf`. The snippet has the blur rules for the panel, the
+`Super+Shift+Z` bind, autostart, and two non-consuming mouse binds the shake
+gesture uses to know whether the button is held. For a different key, run
+`pluto install --bind 'SUPER, Z'`. Undoing it means deleting `pluto.conf` and
+that one line.
 
-## Usage
+## Controls
 
-Open the panel in one of three ways:
+Open the panel by dragging something onto the right edge of the screen, by
+shaking the mouse left and right while holding something, or with
+`Super+Shift+Z` (works mid-drag too).
 
-- drag something to the right edge of the screen
-- shake the mouse left and right while holding something
-- press `Super+Shift+Z` (this also works mid-drag)
+Inside the panel:
 
-Drag items out one at a time, or select several with `Ctrl` or `Shift` and
-drag them together. The "drag all" handle at the bottom takes everything at
-once. Drag-outs copy by default, so the original file and the shelf item both
-stay where they are.
+| | |
+|---|---|
+| drag the header | move the panel |
+| pin icon | keep it open |
+| double-click the name | rename the shelf |
+| right-click | menu: switch shelf, new shelf, rename, clear, delete |
+| `⋮⋮` in the footer | drag every item at once |
+| `delete all` in the footer | empty the shelf |
 
-Keys while the panel is open:
+Keys, while the panel has focus:
 
-| key | |
+| | |
 |---|---|
 | `Ctrl+V` | paste the clipboard onto the shelf |
 | `Ctrl+C` | copy the selected items |
+| `Ctrl+A` | select everything |
 | `Enter` | open the selected items |
 | `Delete` | remove them from the shelf |
 | `Esc` | close the panel |
 
-Right-click for the menu: rename, new shelf, switch shelf, clear, delete.
-Double-click the shelf name to rename it. The `x` in the corner closes the panel.
-
-From the command line:
+## Command line
 
 ```
 pluto              start the daemon
 pluto toggle       open or close the panel
-pluto new          start a new shelf, keep the current one in the tray
-pluto add FILE...  put files, folders, URLs or text on the shelf
+pluto show         open it
+pluto hide         close it
+pluto new          start a new shelf and keep the current one in the tray
+pluto add ITEM...  put files, folders, URLs or text on the shelf from a script
 pluto quit         stop the daemon
+pluto config       write ~/.config/pluto/config.toml with the defaults
 ```
+
+## Configuration
+
+`pluto config` writes `~/.config/pluto/config.toml`. Every key is optional
+and the default colors are catppuccin mocha. Edge, size, animation, drag-out
+behaviour and shake sensitivity are all in there; the full list is in
+[docs/configuration.md](docs/configuration.md).
 
 ## More
 
-- [Installing](docs/install.md)
-- [Configuration](docs/configuration.md)
-- [How it works, and what Wayland and Hyprland make awkward](docs/internals.md)
+- [docs/install.md](docs/install.md): other compositors, undoing the install
+- [docs/configuration.md](docs/configuration.md): every option
+- [docs/internals.md](docs/internals.md): how it works, and the Wayland and Hyprland traps found on the way
 
 ## License
 
