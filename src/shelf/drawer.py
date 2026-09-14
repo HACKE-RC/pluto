@@ -277,7 +277,7 @@ class Drawer(Gtk.Window):
         outer.set_size_request(cfg.width, -1)
         outer.add_css_class("outer")
         self.set_child(outer)
-        self.revealer = Slide(from_right=not left)
+        self.revealer = Slide(from_right=not left, duration_ms=cfg.slide_ms)
         self.revealer.set_valign(Gtk.Align.CENTER)
         self.revealer.set_vexpand(True)
         outer.append(self.revealer)

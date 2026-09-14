@@ -25,8 +25,9 @@ drag touches it, and stays out of the way otherwise.
   the panel opens at the pointer, like Dropover. It closes again after a few
   seconds if nothing lands on it.
 - **Drag things back out** one by one, multi-select with `Ctrl`/`Shift`-click, or
-  grab the *drag all* handle at the bottom. Dragging out removes the item from
-  the shelf; hold `Ctrl` while dragging to keep it.
+  grab the *drag all* handle at the bottom. Items stay on the shelf after a
+  drag-out (set `remove_on_drag_out = true` to have them leave; `Ctrl`-drag
+  keeps them either way).
 - **Keep a shelf in the tray.** *New shelf* stashes the current one — with
   everything on it — behind the tray icon. Switch back any time; shelves survive
   restarts.
@@ -102,7 +103,8 @@ font = "JetBrainsMono Nerd Font, JetBrains Mono, monospace"
 font_size = 12
 auto_collapse_ms = 1200   # after the pointer leaves
 linger_after_drop_ms = 2500
-remove_on_drag_out = true # Ctrl-drag keeps the item either way
+remove_on_drag_out = false # true: dragging out removes the item (Ctrl-drag keeps it)
+slide_ms = 180            # open/close animation
 shake = true              # shake-to-summon (Hyprland IPC); tune with
 shake_requires_grab = true # only while the left button is held
 shake_reversals = 4       #   reversals / travel (px per leg) / window_ms
