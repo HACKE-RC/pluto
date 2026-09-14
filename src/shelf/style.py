@@ -56,6 +56,21 @@ def build_css(cfg: Config) -> str:
         font-size: {cfg.font_size - 1}px;
         letter-spacing: 0.08em;
     }}
+    .close {{
+        color: {p.muted};
+        background: transparent;
+        border: none;
+        padding: 2px;
+        margin-left: 4px;
+        min-width: 18px;
+        min-height: 18px;
+        border-radius: 3px;
+        transition: color 120ms ease-out, background-color 120ms ease-out;
+    }}
+    .close:hover {{
+        color: {p.fg};
+        background-color: {rgba(p.fg, 0.08)};
+    }}
     .eyebrow {{
         color: {p.muted};
         font-size: {cfg.font_size - 2}px;
