@@ -44,6 +44,7 @@ class Config:
     auto_collapse_ms: int = 1200
     linger_after_drop_ms: int = 2500
     remove_on_drag_out: bool = False
+    drag_out_action: str = "copy"
     slide_ms: int = 180
     shake: bool = True
     shake_requires_grab: bool = True
@@ -68,6 +69,7 @@ auto_collapse_ms = 1200   # collapse this long after the pointer leaves
 linger_after_drop_ms = 2500
 remove_on_drag_out = false # remove an item from the shelf after dragging it out (Ctrl-drag keeps it)
 slide_ms = 180            # open/close animation duration
+drag_out_action = "copy"  # "copy": targets always copy; "move": the target may move the file (shelf item goes stale)
 shake = true              # shake the pointer left-right to summon the panel (Hyprland only)
 shake_requires_grab = true # only while the left button is held (needs the binds from `shelf install`)
 shake_reversals = 4       # direction changes needed within shake_window_ms
@@ -103,6 +105,8 @@ def load() -> Config:
     _apply(cfg.palette, data.get("palette", {}))
     if cfg.edge not in ("right", "left"):
         cfg.edge = "right"
+    if cfg.drag_out_action not in ("copy", "move"):
+        cfg.drag_out_action = "copy"
     cfg.strip_width = max(1, int(cfg.strip_width))
     cfg.opacity = min(1.0, max(0.0, float(cfg.opacity)))
     return cfg

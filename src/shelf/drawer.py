@@ -113,7 +113,7 @@ class ItemRow(Gtk.ListBoxRow):
         if item.kind == IMAGE or (item.kind == FILE and ingest.content_type(item).startswith("image/")):
             self._load_thumbnail()
 
-        drag = Gtk.DragSource(actions=Gdk.DragAction.COPY | Gdk.DragAction.MOVE)
+        drag = Gtk.DragSource(actions=drawer.drag_out_actions())
         drag.connect("prepare", self._on_prepare)
         drag.connect("drag-begin", self._on_drag_begin)
         drag.connect("drag-end", lambda *_: drawer.on_drag_out_end())
@@ -344,7 +344,7 @@ class Drawer(Gtk.Window):
         self.footer.append(grip)
         self.footer.append(self.footer_label)
         self.panel.append(self.footer)
-        drag_all = Gtk.DragSource(actions=Gdk.DragAction.COPY | Gdk.DragAction.MOVE)
+        drag_all = Gtk.DragSource(actions=self.drag_out_actions())
         drag_all.connect("prepare", self._prepare_drag_all)
         drag_all.connect("drag-begin", self._begin_drag_all)
         drag_all.connect("drag-end", lambda *_: self.on_drag_out_end())
@@ -570,6 +570,11 @@ class Drawer(Gtk.Window):
         ingest.from_clipboard(self.store, self.get_clipboard(), lambda items: self.store.add_items(items))
 
     # ── drag out ─────────────────────────────────────────────────
+    def drag_out_actions(self) -> Gdk.DragAction:
+        if self.cfg.drag_out_action == "move":
+            return Gdk.DragAction.COPY | Gdk.DragAction.MOVE
+        return Gdk.DragAction.COPY
+
     def begin_drag_out(self, items: list[Item], keep: bool, x: float, y: float, widget: Gtk.Widget):
         provider = content_for(items)
         if provider is None:
