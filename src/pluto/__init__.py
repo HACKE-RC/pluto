@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 
 
 def _ensure_layer_shell_preloaded() -> None:
@@ -25,18 +25,32 @@ def _ensure_layer_shell_preloaded() -> None:
     os.execve(sys.executable, [sys.executable, *sys.argv], env)
 
 
+def _require_versions() -> None:
+    import gi
+
+    gi.require_version("Gtk", "4.0")
+    gi.require_version("Gdk", "4.0")
+    gi.require_version("GdkPixbuf", "2.0")
+    gi.require_version("Gtk4LayerShell", "1.0")
+
+
 def main() -> int:
     args = sys.argv[1:]
     if args[:1] == ["install"]:
         from .install import run
 
         return run(args[1:])
+    if args[:1] == ["update"]:
+        from .update import run as update
+
+        return update()
     if args[:1] == ["config"]:
         from .config import write_default
 
         print(write_default())
         return 0
     if args[:1] in (["-h"], ["--help"], ["help"]):
+        _require_versions()
         from .app import USAGE
 
         print(USAGE, end="")
@@ -46,13 +60,7 @@ def main() -> int:
         return 0
 
     _ensure_layer_shell_preloaded()
-    import gi
-
-    gi.require_version("Gtk", "4.0")
-    gi.require_version("Gdk", "4.0")
-    gi.require_version("GdkPixbuf", "2.0")
-    gi.require_version("Gtk4LayerShell", "1.0")
-
+    _require_versions()
     from .app import ShelfApp
 
     return ShelfApp().run(sys.argv)

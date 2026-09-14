@@ -4,17 +4,11 @@ A place to put things while you're moving them. Drag something to the screen
 edge, drop it, go where it needs to go, drag it back out. Works with files,
 links, text and images from the browser.
 
-Made for Hyprland. It also runs on other compositors that have
-`wlr-layer-shell` and a StatusNotifierItem tray (waybar, quickshell and the
-like); see the notes in [docs/install.md](docs/install.md).
-
 ![pluto](https://raw.githubusercontent.com/HACKE-RC/pluto/main/docs/shelf.png)
 
 ## Why
 
-Moving something between two windows on a tiling compositor means switching
-workspaces with the mouse button held down. macOS has Dropover and Yoink for
-this, Windows has Dropshelf, and I could not find anything on Wayland that
+macOS has Dropover and Yoink for this, Windows has Dropshelf, and I could not find anything on Wayland that
 felt right. So this is an invisible 3 px strip on the screen edge that turns
 into a shelf when a drag touches it, plus a shake gesture for when the edge is
 too far away.
@@ -109,6 +103,7 @@ pluto hide         close it
 pluto new          start a new shelf and keep the current one in the tray
 pluto add ITEM...  put files, folders, URLs or text on the shelf from a script
 pluto quit         stop the daemon
+pluto update       upgrade to the latest release and restart the daemon
 pluto config       write ~/.config/pluto/config.toml with the defaults
 ```
 

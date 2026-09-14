@@ -22,6 +22,7 @@ USAGE = """usage: pluto [command]
   add ITEM...   put files, folders, URLs or text on the active shelf
   quit          stop the daemon
   install       write Hyprland rules, keybind and autostart
+  update        upgrade pluto (uv, pipx or pip, whichever installed it) and restart the daemon
   config        create ~/.config/pluto/config.toml with the defaults
 """
 
