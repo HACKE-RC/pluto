@@ -49,9 +49,16 @@ Loading gtk4-layer-shell with `ctypes.CDLL(..., RTLD_GLOBAL)` from Python
 looks like it works but only intercepts part of libwayland. The daemon re-execs
 itself with `LD_PRELOAD` instead.
 
-Switching a layer surface's keyboard mode from none to on-demand makes Hyprland
-grab keyboard focus on the next commit. The shelf only asks for on-demand
-focus after you click inside it, and gives it back when it closes.
+Keyboard focus on layer surfaces is fiddly. Hyprland grants *on-demand* focus
+only when you click the surface, so a panel opened by hotkey away from the
+pointer would never see `Ctrl+V`. Deliberate opens (hotkey, shake, tray) therefore
+request *exclusive* focus, which Hyprland grants at once; the panel lets go
+again on a real pointer leave, on any click outside it (reported by the same
+button binds the shake uses), on a key it does not handle, or after four
+seconds untouched. Opens triggered by a drag never take the keyboard. Two
+traps: switching exclusive to on-demand makes Hyprland drop focus entirely,
+and the moment focus arrives GTK receives a bogus pointer enter/leave pair,
+so crossings are only trusted when their coordinates fall inside the panel.
 
 ## Shake detection
 

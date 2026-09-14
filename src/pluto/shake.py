@@ -46,6 +46,7 @@ class ShakeDetector:
         self.requires_grab = requires_grab
         # None = unknown (binds not installed or no click yet) -> allow; True/False = left button state
         self.button_down: bool | None = None
+        self.on_button: Callable[[bool], None] | None = None
         self._monitor: Gio.FileMonitor | None = None
         self.interval = interval_ms / 1000
         self.window = window_ms / 1000
@@ -60,8 +61,7 @@ class ShakeDetector:
         path = hypr_socket_path()
         if not path:
             return False
-        if self.requires_grab:
-            self._watch_button()
+        self._watch_button()
         self._thread = threading.Thread(target=self._run, args=(path,), name="pluto-shake", daemon=True)
         self._thread.start()
         return True
@@ -80,6 +80,9 @@ class ShakeDetector:
             self.button_down = BUTTON_FILE.read_text().strip() == "1"
         except OSError:
             self.button_down = None
+            return
+        if self.on_button:
+            self.on_button(self.button_down)
 
     def _run(self, path: str) -> None:
         last_fire = 0.0

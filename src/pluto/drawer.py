@@ -264,7 +264,9 @@ class Drawer(Gtk.Window):
         self.popover_open = False
         self._collapse_source = 0
         self._last_dnd_motion = 0
-        self._keyboard = False
+        self._keyboard = LS.KeyboardMode.NONE
+        self._grab_source = 0
+        self._pointer_in_panel = False
         self.add_css_class("pluto")
 
         left = cfg.edge == "left"
@@ -399,9 +401,12 @@ class Drawer(Gtk.Window):
         drop.connect("drop", self._on_dnd_drop)
         self.add_controller(drop)
 
+        # Hyprland sends a bogus pointer enter/leave pair when a layer surface gains keyboard focus, so
+        # crossings only count when the coordinates really are inside the panel.
         motion = Gtk.EventControllerMotion()
-        motion.connect("enter", lambda *_: self._cancel_collapse())
-        motion.connect("leave", lambda *_: (self._set_keyboard(False), self._schedule_collapse(self.cfg.auto_collapse_ms)))
+        motion.connect("enter", lambda c, x, y: self._pointer_moved(x, y))
+        motion.connect("motion", lambda c, x, y: self._pointer_moved(x, y))
+        motion.connect("leave", lambda *_: self._pointer_left())
         self.add_controller(motion)
 
         keys = Gtk.EventControllerKey()
@@ -460,11 +465,16 @@ class Drawer(Gtk.Window):
         surface.set_input_region(region)
 
     # ── expand / collapse ────────────────────────────────────────
-    def expand(self, y: float | None = None) -> None:
+    def expand(self, y: float | None = None, focus: bool = True) -> None:
+        """Open the panel. focus=False for drag-triggered opens, where taking the keyboard would be rude."""
         self._cancel_collapse()
         if self.expanded:
+            if focus:
+                self._grab_keyboard()
             return
         self.expanded = True
+        if focus:
+            self._grab_keyboard()
         if self.store.panel_pos is not None:
             self._set_position(*self.store.panel_pos)
             self.revealer.set_reveal_child(True)
@@ -563,17 +573,68 @@ class Drawer(Gtk.Window):
         log("collapse")
         self.expanded = False
         self.dnd_active = False
+        self._pointer_in_panel = False
         self.remove_css_class("drop-hover")
         self.revealer.set_reveal_child(False)
         self._set_keyboard(False)
         self._apply_input_region()
 
     def _set_keyboard(self, wanted: bool) -> None:
-        # Flipping to ON_DEMAND makes Hyprland grab keyboard focus on the next commit, so only do it
-        # once the user has actually clicked inside the panel, and release it on collapse.
-        if wanted != self._keyboard:
-            self._keyboard = wanted
-            LS.set_keyboard_mode(self, LS.KeyboardMode.ON_DEMAND if wanted else LS.KeyboardMode.NONE)
+        self._set_keyboard_mode(LS.KeyboardMode.ON_DEMAND if wanted else LS.KeyboardMode.NONE)
+
+    def _set_keyboard_mode(self, mode) -> None:
+        # Hyprland grants ON_DEMAND focus only on interaction; a hotkey-opened panel away from the pointer would
+        # never get keys. So deliberate opens take EXCLUSIVE focus briefly (see _grab_keyboard), and the panel
+        # drops back to ON_DEMAND once the pointer is inside, or NONE when it leaves or the panel closes.
+        if mode != self._keyboard:
+            log("keyboard mode", int(self._keyboard), "->", int(mode), "from", sys._getframe(2).f_code.co_name)
+            self._keyboard = mode
+            LS.set_keyboard_mode(self, mode)
+        if mode != LS.KeyboardMode.EXCLUSIVE:
+            self._cancel_grab_timeout()
+
+    def _in_panel(self, x: float, y: float) -> bool:
+        if self._panel_left is None:
+            return False
+        pw, ph = self._panel_size()
+        return self._panel_left <= x < self._panel_left + pw and self._panel_top <= y < self._panel_top + ph
+
+    def _pointer_moved(self, x: float, y: float) -> None:
+        inside = self._in_panel(x, y)
+        if inside and not self._pointer_in_panel:
+            self._pointer_in_panel = True
+            self._cancel_collapse()
+            self._cancel_grab_timeout()
+        elif not inside and self._pointer_in_panel:
+            self._pointer_left()
+
+    def _pointer_left(self) -> None:
+        if not self._pointer_in_panel:
+            return
+        self._pointer_in_panel = False
+        self._set_keyboard(False)
+        self._schedule_collapse(self.cfg.auto_collapse_ms)
+
+    def on_global_button(self, down: bool) -> None:
+        """Left button pressed anywhere (from the Hyprland binds): a click outside the panel gives the keyboard back."""
+        if down and not self._pointer_in_panel and self._keyboard != LS.KeyboardMode.NONE:
+            self._set_keyboard(False)
+
+    def _grab_keyboard(self) -> None:
+        self._set_keyboard_mode(LS.KeyboardMode.EXCLUSIVE)
+        self._cancel_grab_timeout()
+        self._grab_source = GLib.timeout_add(4000, self._grab_timeout)
+
+    def _grab_timeout(self) -> bool:
+        self._grab_source = 0
+        if self._keyboard == LS.KeyboardMode.EXCLUSIVE:
+            self._set_keyboard_mode(LS.KeyboardMode.NONE)
+        return False
+
+    def _cancel_grab_timeout(self) -> None:
+        if getattr(self, "_grab_source", 0):
+            GLib.source_remove(self._grab_source)
+            self._grab_source = 0
 
     def toggle(self) -> None:
         self.collapse(force=True) if self.expanded else self.expand()
@@ -601,7 +662,7 @@ class Drawer(Gtk.Window):
         self._last_dnd_motion = GLib.get_monotonic_time()
         self.add_css_class("drop-hover")
         log("dnd enter", drop.get_formats().to_string())
-        self.expand(y)
+        self.expand(y, focus=False)
         return Gdk.DragAction.COPY
 
     def _on_dnd_motion(self, target, drop, x, y):
@@ -627,7 +688,9 @@ class Drawer(Gtk.Window):
         return True
 
     def paste(self) -> None:
-        ingest.from_clipboard(self.store, self.get_clipboard(), self.add_items)
+        clipboard = self.get_clipboard()
+        log("paste: clipboard formats", clipboard.get_formats().to_string(), "local=", clipboard.is_local())
+        ingest.from_clipboard(self.store, clipboard, lambda items: (log("paste ->", [(i.kind, i.name) for i in items]), self.add_items(items)))
 
     def add_items(self, items: list[Item]) -> None:
         self.store.add_items(items)
@@ -825,6 +888,7 @@ class Drawer(Gtk.Window):
 
     def _on_key(self, controller, keyval, keycode, state) -> bool:
         ctrl = bool(state & Gdk.ModifierType.CONTROL_MASK)
+        log("key", Gdk.keyval_name(keyval), "ctrl=", ctrl)
         if keyval == Gdk.KEY_Escape:
             self.collapse(force=True)
         elif keyval in (Gdk.KEY_Delete, Gdk.KEY_BackSpace):
@@ -838,5 +902,11 @@ class Drawer(Gtk.Window):
         elif keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
             self.open_items(self.selected_items())
         else:
+            # A key we don't use while holding exclusive focus means the user is typing elsewhere: let go.
+            # Modifiers on their own don't count (Ctrl arrives before the V of Ctrl+V).
+            name = Gdk.keyval_name(keyval) or ""
+            is_modifier = name.endswith(("_L", "_R")) or name in ("ISO_Level3_Shift", "Caps_Lock", "Num_Lock")
+            if self._keyboard == LS.KeyboardMode.EXCLUSIVE and not is_modifier:
+                self._set_keyboard_mode(LS.KeyboardMode.NONE)
             return False
         return True
