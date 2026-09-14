@@ -193,6 +193,8 @@ class Drawer(Gtk.Window):
         self.popover_open = False
         self._collapse_source = 0
         self._anchor_y: float | None = None
+        self._last_dnd_motion = 0
+        self._keyboard = False
         self.add_css_class("shelf")
 
         left = cfg.edge == "left"
@@ -204,6 +206,7 @@ class Drawer(Gtk.Window):
         LS.set_exclusive_zone(self, 0)
         LS.set_keyboard_mode(self, LS.KeyboardMode.NONE)
         self.set_default_size(cfg.width, -1)
+        self.set_size_request(cfg.width, -1)
 
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, vexpand=True)
         outer.set_size_request(cfg.width, -1)
@@ -263,6 +266,7 @@ class Drawer(Gtk.Window):
         self.listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.MULTIPLE, activate_on_single_click=False)
         self.listbox.add_css_class("items")
         self.listbox.connect("row-activated", lambda lb, row: self.open_items([row.item]))
+        self.listbox.connect("selected-rows-changed", lambda lb: log("selection:", [r.item.name for r in lb.get_selected_rows()]))
         self.scroller.set_child(self.listbox)
         self.stack.add_named(self.scroller, "list")
 
@@ -308,14 +312,14 @@ class Drawer(Gtk.Window):
         drop = Gtk.DropTargetAsync.new(Gdk.ContentFormats.new(ingest.ALL_MIMES), Gdk.DragAction.COPY | Gdk.DragAction.MOVE)
         drop.connect("accept", lambda t, d: d.get_drag() is None)
         drop.connect("drag-enter", self._on_dnd_enter)
-        drop.connect("drag-motion", lambda t, d, x, y: Gdk.DragAction.COPY)
+        drop.connect("drag-motion", self._on_dnd_motion)
         drop.connect("drag-leave", self._on_dnd_leave)
         drop.connect("drop", self._on_dnd_drop)
         self.add_controller(drop)
 
         motion = Gtk.EventControllerMotion()
-        motion.connect("enter", lambda *_: self._cancel_collapse())
-        motion.connect("leave", lambda *_: self._schedule_collapse(self.cfg.auto_collapse_ms))
+        motion.connect("enter", lambda *_: (log("pointer enter"), self._cancel_collapse()))
+        motion.connect("leave", lambda *_: (log("pointer leave"), self._schedule_collapse(self.cfg.auto_collapse_ms)))
         self.add_controller(motion)
 
         keys = Gtk.EventControllerKey()
@@ -326,6 +330,26 @@ class Drawer(Gtk.Window):
         backdrop.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
         backdrop.connect("pressed", self._on_backdrop_press)
         self.add_controller(backdrop)
+
+        if DEBUG:
+            legacy = Gtk.EventControllerLegacy()
+            legacy.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+            legacy.connect("event", self._log_event)
+            self.add_controller(legacy)
+
+    _LOGGED_EVENTS = {
+        Gdk.EventType.BUTTON_PRESS, Gdk.EventType.BUTTON_RELEASE, Gdk.EventType.ENTER_NOTIFY,
+        Gdk.EventType.LEAVE_NOTIFY, Gdk.EventType.FOCUS_CHANGE, Gdk.EventType.GRAB_BROKEN, Gdk.EventType.KEY_PRESS,
+    }
+
+    def _log_event(self, controller, event) -> bool:
+        if event is None:
+            return False
+        kind = event.get_event_type()
+        if kind in self._LOGGED_EVENTS:
+            ok, x, y = event.get_position()
+            log("event", kind.value_nick, f"({int(x)},{int(y)})" if ok else "", "seq" if event.get_event_sequence() else "")
+        return False
 
         menu = Gtk.GestureClick(button=3)
         menu.connect("pressed", self._on_context_press)
@@ -357,7 +381,6 @@ class Drawer(Gtk.Window):
             return
         self.expanded = True
         self._apply_input_region()
-        LS.set_keyboard_mode(self, LS.KeyboardMode.ON_DEMAND)
         if y is not None:
             self._place_near(y)
             self.revealer.set_reveal_child(True)
@@ -404,12 +427,26 @@ class Drawer(Gtk.Window):
         self._cancel_collapse()
         if not self.expanded:
             return
-        if not force and (self.dnd_active or self.drag_out_active or self.popover_open):
+        # A drag that left without a leave event (compositor quirk) must not pin the panel open forever.
+        dnd_live = self.dnd_active and GLib.get_monotonic_time() - self._last_dnd_motion < 2_000_000
+        if not force and (dnd_live or self.drag_out_active or self.popover_open):
+            log("collapse deferred: dnd=", self.dnd_active, "drag_out=", self.drag_out_active, "popover=", self.popover_open)
+            self._schedule_collapse(self.cfg.auto_collapse_ms)
             return
+        log("collapse")
         self.expanded = False
+        self.dnd_active = False
+        self.remove_css_class("drop-hover")
         self.revealer.set_reveal_child(False)
-        LS.set_keyboard_mode(self, LS.KeyboardMode.NONE)
+        self._set_keyboard(False)
         self._apply_input_region()
+
+    def _set_keyboard(self, wanted: bool) -> None:
+        # Flipping to ON_DEMAND makes Hyprland grab keyboard focus on the next commit, so only do it
+        # once the user has actually clicked inside the panel, and release it on collapse.
+        if wanted != self._keyboard:
+            self._keyboard = wanted
+            LS.set_keyboard_mode(self, LS.KeyboardMode.ON_DEMAND if wanted else LS.KeyboardMode.NONE)
 
     def toggle(self) -> None:
         self.collapse(force=True) if self.expanded else self.expand()
@@ -434,12 +471,18 @@ class Drawer(Gtk.Window):
         if drop.get_drag() is not None:
             return 0
         self.dnd_active = True
+        self._last_dnd_motion = GLib.get_monotonic_time()
         self.add_css_class("drop-hover")
         log("dnd enter", drop.get_formats().to_string())
         self.expand(y)
         return Gdk.DragAction.COPY
 
+    def _on_dnd_motion(self, target, drop, x, y):
+        self._last_dnd_motion = GLib.get_monotonic_time()
+        return Gdk.DragAction.COPY
+
     def _on_dnd_leave(self, target, drop):
+        log("dnd leave")
         self.dnd_active = False
         self.remove_css_class("drop-hover")
         self._schedule_collapse(self.cfg.auto_collapse_ms)
@@ -473,14 +516,16 @@ class Drawer(Gtk.Window):
         return provider
 
     def attach_drag(self, drag: Gdk.Drag) -> None:
-        drag.connect("drop-performed", lambda *_: self._on_drop_performed())
-        drag.connect("dnd-finished", lambda d: log("dnd-finished action", d.get_selected_action()))
+        # Hyprland reports neither drop-performed nor a selected action; dnd-finished (vs cancel) is the success signal.
+        drag.connect("drop-performed", lambda *_: self._on_drag_out_done("drop-performed"))
+        drag.connect("dnd-finished", lambda *_: self._on_drag_out_done("dnd-finished"))
         drag.connect("cancel", lambda d, reason: log("drag cancel", reason))
 
-    def _on_drop_performed(self) -> None:
-        log("drop-performed keep=", self.drag_out_keep)
-        if self.cfg.remove_on_drag_out and not self.drag_out_keep:
+    def _on_drag_out_done(self, signal: str) -> None:
+        log(signal, "keep=", self.drag_out_keep, "items=", len(self.drag_out_items))
+        if self.cfg.remove_on_drag_out and not self.drag_out_keep and self.drag_out_items:
             self.remove_items({i.id for i in self.drag_out_items})
+            self.drag_out_items = []
 
     def on_drag_out_end(self) -> None:
         self.drag_out_active = False
@@ -636,7 +681,9 @@ class Drawer(Gtk.Window):
     def _on_backdrop_press(self, gesture, n_press, x, y) -> None:
         picked = self.pick(x, y, Gtk.PickFlags.DEFAULT)
         inside = picked is not None and (picked == self.panel or picked.is_ancestor(self.panel))
+        log("press", n_press, "at", int(x), int(y), "on", type(picked).__name__ if picked else None, "inside=", inside)
         if inside:
+            self._set_keyboard(True)
             if picked.get_ancestor(Gtk.ListBoxRow) is None and picked.get_ancestor(Gtk.Button) is None:
                 self.listbox.unselect_all()
             return

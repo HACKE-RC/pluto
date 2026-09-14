@@ -2,22 +2,27 @@
 
 from __future__ import annotations
 
-import ctypes
 import sys
 
 __version__ = "0.1.0"
 
 
-def _preload_layer_shell() -> None:
-    # gtk4-layer-shell must be in the global symbol scope before GTK pulls in libwayland-client.
-    for name in ("libgtk4-layer-shell.so.0", "libgtk4-layer-shell.so"):
-        try:
-            ctypes.CDLL(name, mode=ctypes.RTLD_GLOBAL)
-            return
-        except OSError:
-            continue
-    sys.stderr.write("shelf: gtk4-layer-shell is not installed (libgtk4-layer-shell.so not found)\n")
-    sys.exit(1)
+def _ensure_layer_shell_preloaded() -> None:
+    """gtk4-layer-shell must interpose libwayland-client before GTK loads it. dlopen(RTLD_GLOBAL) from Python is not
+    reliable for that (some hooks are missed and the layer surface ends up in a resize loop), so re-exec with LD_PRELOAD."""
+    import ctypes.util
+    import os
+
+    if os.environ.get("SHELF_PRELOADED") == "1":
+        return
+    lib = ctypes.util.find_library("gtk4-layer-shell")
+    if not lib:
+        sys.stderr.write("shelf: gtk4-layer-shell is not installed (libgtk4-layer-shell.so not found)\n")
+        sys.exit(1)
+    env = dict(os.environ)
+    env["LD_PRELOAD"] = " ".join(filter(None, [lib, env.get("LD_PRELOAD")]))
+    env["SHELF_PRELOADED"] = "1"
+    os.execve(sys.executable, [sys.executable, *sys.argv], env)
 
 
 def main() -> int:
@@ -40,7 +45,7 @@ def main() -> int:
         print(f"shelf {__version__}")
         return 0
 
-    _preload_layer_shell()
+    _ensure_layer_shell_preloaded()
     import gi
 
     gi.require_version("Gtk", "4.0")

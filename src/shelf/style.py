@@ -23,10 +23,16 @@ def build_css(cfg: Config) -> str:
         outline-style: none;
         -gtk-icon-style: symbolic;
     }}
-    window.shelf, window.shelf > * {{
+    window.shelf {{
         background-color: transparent;
         color: {p.fg};
-    }}    .panel {{
+    }}
+    /* Not quite transparent on purpose: GTK skips rendering an empty surface, and without a frame
+       GDK never sends the window geometry that gtk4-layer-shell needs to size the layer. */
+    .outer {{
+        background-color: rgba(0, 0, 0, 0.01);
+    }}
+    .panel {{
         background-color: {rgba(p.bg, cfg.opacity)};
         border: 1px solid {rgba(p.border, 0.9)};
         {border_side}
