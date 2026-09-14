@@ -830,10 +830,10 @@ class Drawer(Gtk.Window):
         label.add_css_class("preview-text")
         scroller.set_child(label)
         box.append(scroller)
-        actions = Gtk.Box(spacing=4, halign=Gtk.Align.END)
+        actions = Gtk.Box(spacing=8, halign=Gtk.Align.END, margin_top=4)
         for text, cb in (("copy", lambda *_: self.copy_items([item])), ("open in editor", lambda *_: self.open_text_in_editor(item))):
             button = Gtk.Button(label=text, has_frame=False)
-            button.add_css_class("footer-action")
+            button.add_css_class("chip")
             button.connect("clicked", cb)
             actions.append(button)
         box.append(actions)

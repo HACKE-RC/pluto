@@ -268,6 +268,26 @@ def build_css(cfg: Config) -> str:
     .preview-text selection {{
         background-color: {rgba(p.accent, 0.3)};
     }}
+    .chip {{
+        color: {p.muted};
+        background-color: {rgba(p.fg, 0.04)};
+        border: 1px solid {rgba(p.border, 0.9)};
+        border-radius: 4px;
+        padding: 3px 10px;
+        min-height: 0;
+        font-size: {cfg.font_size - 2}px;
+        letter-spacing: 0.06em;
+        transition: color 120ms ease-out, background-color 120ms ease-out, border-color 120ms ease-out;
+    }}
+    .chip:hover {{
+        color: {p.fg};
+        background-color: {rgba(p.fg, 0.08)};
+        border-color: {rgba(p.fg, 0.25)};
+    }}
+    .chip:active {{
+        background-color: {rgba(p.accent, 0.18)};
+        border-color: {rgba(p.accent, 0.6)};
+    }}
     entry.rename {{
         background-color: {rgba(p.fg, 0.05)};
         border: 1px solid {rgba(p.border, 0.9)};
