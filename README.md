@@ -25,15 +25,33 @@ Shelves are saved to disk and come back after a restart.
 
 ## Install
 
-```sh
-uv tool install pluto-shelf                                # from PyPI
-uv tool install git+https://github.com/HACKE-RC/pluto      # or straight from GitHub
-pluto install && hyprctl reload && pluto                    # Hyprland rules, keybind, autostart
-```
+1. System libraries (GTK 4, gtk4-layer-shell, gobject-introspection, cairo):
 
-You need GTK 4, gtk4-layer-shell, gobject-introspection and cairo on the
-system; see [docs/install.md](docs/install.md) for the details and for other
-compositors.
+   ```sh
+   sudo pacman -S gtk4 gtk4-layer-shell gobject-introspection cairo        # Arch
+   sudo apt install libgtk-4-dev libgtk4-layer-shell-dev libgirepository-2.0-dev libcairo2-dev  # Debian/Ubuntu
+   sudo dnf install gtk4-devel gtk4-layer-shell-devel gobject-introspection-devel cairo-devel  # Fedora
+   ```
+
+2. The tool itself, any one of these:
+
+   ```sh
+   uv tool install pluto-shelf                            # from PyPI
+   pipx install pluto-shelf                               # same, with pipx
+   uv tool install git+https://github.com/HACKE-RC/pluto  # latest from GitHub
+   ```
+
+3. Hyprland rules, keybind and autostart, then start it:
+
+   ```sh
+   pluto install
+   hyprctl reload
+   pluto
+   ```
+
+`pluto install` writes `~/.config/hypr/pluto.conf` and adds one `source` line to
+your `hyprland.conf`; see [docs/install.md](docs/install.md) for what is in it,
+how to undo it, and notes for other compositors.
 
 ## Usage
 
